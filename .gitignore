@@ -1,0 +1,73 @@
+node_modules/
+
+.next/
+
+dist/
+
+.env
+.env.*
+
+!.env.example
+
+runtime/*
+!runtime/.gitkeep
+
+storage/*
+!storage/.gitkeep
+
+npm-debug.log*
+
+*.log
+
+# STAGEPILOT_MANAGED_GITIGNORE_V1
+
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build output
+.next/
+**/.next/
+dist/
+**/dist/
+coverage/
+**/coverage/
+
+# Runtime and persistent private state
+runtime/
+storage/
+.cache/
+tmp/
+temp/
+
+# Logs
+*.log
+logs/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+
+# Local databases / dumps
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+*.sql.gz
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# StagePilot temporary artifacts
+stagepilot-visible-login-url.txt
+runlog.txt

@@ -1,0 +1,16 @@
+{
+  "name": "stagepilot",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/web",
+    "apps/api",
+    "apps/worker"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "build:web": "npm run build --workspace @stagepilot/web",
+    "build:api": "npm run build --workspace @stagepilot/api",
+    "test:worker": "npm run test:once --workspace @stagepilot/worker"
+  }
+}

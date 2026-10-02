@@ -71,3 +71,26 @@ Thumbs.db
 # StagePilot temporary artifacts
 stagepilot-visible-login-url.txt
 runlog.txt
+
+# STAGEPILOT_HISTORICAL_BACKFILL_SAFETY_V1
+
+# Browser/process local home state
+.config/
+.local/
+
+# Machine-local StagePilot marker
+.stagepilot-project
+
+# Temporary/debug files
+*.tmp
+*.bak
+*.swp
+*.pid
+*.sock
+
+# Local archives and dumps
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+*.dump

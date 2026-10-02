@@ -1,0 +1,63 @@
+{
+  "version": 1,
+
+  "root": "/opt/stagepilot/storage",
+
+  "archive": {
+    "prompts": {
+      "path": "archive/prompts",
+      "automaticDeletion": false
+    },
+
+    "responses": {
+      "path": "archive/responses",
+      "automaticDeletion": false
+    },
+
+    "reports": {
+      "path": "archive/reports",
+      "automaticDeletion": false
+    }
+  },
+
+  "artifacts": {
+    "scripts": {
+      "quarantine": "artifacts/scripts/quarantine",
+      "approved": "artifacts/scripts/approved",
+      "rejected": "artifacts/scripts/rejected"
+    },
+
+    "runs": "artifacts/runs",
+
+    "logs": "artifacts/logs",
+
+    "tests": "artifacts/tests",
+
+    "git": "artifacts/git"
+  },
+
+  "projects": {
+    "metadata": "projects",
+    "workspaces": "workspaces"
+  },
+
+  "browserProfiles": {
+    "path": "browser-profiles",
+    "mode": "0700",
+    "automaticDeletion": false
+  },
+
+  "exports": {
+    "path": "exports"
+  },
+
+  "backups": {
+    "path": "backups",
+    "automaticDeletion": false
+  },
+
+  "temporary": {
+    "path": "tmp",
+    "automaticCleanupEnabled": false
+  }
+}

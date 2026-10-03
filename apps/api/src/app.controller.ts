@@ -93,6 +93,16 @@ import {
     getProjectAutomation
 } from './automation';
 
+import {
+    createProjectTreeNode,
+    deleteProjectTreeNode,
+    getProjectNodeInspector,
+    reorderProjectTree,
+    saveProposalHtml,
+    updateProjectIntegrationSettings,
+    updateProjectTreeNode
+} from './project-control';
+
 
 @Controller()
 export class AppController {
@@ -881,6 +891,120 @@ export class AppController {
             throw new BadRequestException(
                 error instanceof Error ? error.message : 'PROJECT_DELETE_FAILED'
             );
+        }
+    }
+
+
+    @Patch('projects/:id/integrations')
+    async updateProjectIntegrations(
+        @Param('id') id: string,
+        @Body() body: Record<string, unknown>,
+        @Headers('x-stagepilot-internal-key') internalKey?: string
+    ) {
+        this.authorizeInternal(internalKey);
+        try {
+            return {
+                ok: true,
+                project: await updateProjectIntegrationSettings(id, body ?? {})
+            };
+        } catch (error) {
+            throw new BadRequestException(
+                error instanceof Error ? error.message : 'PROJECT_INTEGRATIONS_UPDATE_FAILED'
+            );
+        }
+    }
+
+
+    @Post('projects/:id/tree/nodes')
+    async createTreeNode(
+        @Param('id') id: string,
+        @Body() body: Record<string, unknown>,
+        @Headers('x-stagepilot-internal-key') internalKey?: string
+    ) {
+        this.authorizeInternal(internalKey);
+        try {
+            return { ok: true, node: await createProjectTreeNode(id, body ?? {}) };
+        } catch (error) {
+            throw new BadRequestException(error instanceof Error ? error.message : 'TREE_NODE_CREATE_FAILED');
+        }
+    }
+
+
+    @Patch('projects/:id/tree/nodes/:nodeId')
+    async updateTreeNode(
+        @Param('id') id: string,
+        @Param('nodeId') nodeId: string,
+        @Body() body: Record<string, unknown>,
+        @Headers('x-stagepilot-internal-key') internalKey?: string
+    ) {
+        this.authorizeInternal(internalKey);
+        try {
+            return { ok: true, node: await updateProjectTreeNode(id, nodeId, body ?? {}) };
+        } catch (error) {
+            throw new BadRequestException(error instanceof Error ? error.message : 'TREE_NODE_UPDATE_FAILED');
+        }
+    }
+
+
+    @Delete('projects/:id/tree/nodes/:nodeId')
+    async deleteTreeNode(
+        @Param('id') id: string,
+        @Param('nodeId') nodeId: string,
+        @Body() body: { kind?: unknown },
+        @Headers('x-stagepilot-internal-key') internalKey?: string
+    ) {
+        this.authorizeInternal(internalKey);
+        try {
+            return { ok: true, result: await deleteProjectTreeNode(id, nodeId, body?.kind) };
+        } catch (error) {
+            throw new BadRequestException(error instanceof Error ? error.message : 'TREE_NODE_DELETE_FAILED');
+        }
+    }
+
+
+    @Post('projects/:id/tree/reorder')
+    async reorderTree(
+        @Param('id') id: string,
+        @Body() body: Record<string, unknown>,
+        @Headers('x-stagepilot-internal-key') internalKey?: string
+    ) {
+        this.authorizeInternal(internalKey);
+        try {
+            return { ok: true, result: await reorderProjectTree(id, body ?? {}) };
+        } catch (error) {
+            throw new BadRequestException(error instanceof Error ? error.message : 'TREE_REORDER_FAILED');
+        }
+    }
+
+
+    @Get('projects/:id/tree/:kind/:nodeId/inspector')
+    async nodeInspector(
+        @Param('id') id: string,
+        @Param('kind') kind: string,
+        @Param('nodeId') nodeId: string,
+        @Headers('x-stagepilot-internal-key') internalKey?: string
+    ) {
+        this.authorizeInternal(internalKey);
+        try {
+            return { ok: true, inspector: await getProjectNodeInspector(id, kind, nodeId) };
+        } catch (error) {
+            throw new BadRequestException(error instanceof Error ? error.message : 'NODE_INSPECTOR_FAILED');
+        }
+    }
+
+
+    @Patch('projects/:id/planning/plans/:version/html')
+    async updateProposalHtml(
+        @Param('id') id: string,
+        @Param('version') version: string,
+        @Body() body: { html?: unknown },
+        @Headers('x-stagepilot-internal-key') internalKey?: string
+    ) {
+        this.authorizeInternal(internalKey);
+        try {
+            return { ok: true, plan: await saveProposalHtml(id, version, body?.html) };
+        } catch (error) {
+            throw new BadRequestException(error instanceof Error ? error.message : 'PROPOSAL_HTML_UPDATE_FAILED');
         }
     }
 

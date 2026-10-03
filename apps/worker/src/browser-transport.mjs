@@ -73,6 +73,7 @@ export async function sendPromptAndWait({
     profileKey,
     accountId,
     conversationUrl,
+    createProjectName,
     operationId,
     promptText,
     timeoutMs = 180_000
@@ -84,9 +85,17 @@ export async function sendPromptAndWait({
     });
 
     if (conversationUrl) {
+        const target = new URL(conversationUrl);
+        if (target.hostname === 'www.chatgpt.com') target.hostname = 'chatgpt.com';
+        const isConversation = /\/c\/[^/?#]+/.test(target.pathname);
         await adapterRequest(profileKey, {
-            action: 'open-conversation',
-            url: conversationUrl
+            action: isConversation ? 'open-conversation' : 'open-target',
+            url: target.href
+        });
+    } else if (createProjectName) {
+        await adapterRequest(profileKey, {
+            action: 'new-project',
+            name: createProjectName
         });
     } else {
         await adapterRequest(profileKey, { action: 'new-chat' });

@@ -238,7 +238,7 @@ export async function getProjectWorkspace(
                 ORDER BY
                     id DESC
 
-                LIMIT 40
+                LIMIT 150
             `,
             [
                 projectId

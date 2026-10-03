@@ -5,7 +5,6 @@ import {
     SESSION_COOKIE,
     verifySessionToken
 } from '../../../../lib/auth';
-import { requestPlanningEvaluationRequest } from '../../../../lib/planning';
 import { createProjectRequest } from '../../../../lib/projects';
 
 
@@ -84,24 +83,8 @@ export async function POST(request: NextRequest) {
         return projectsRedirect({ error: 'create', reason });
     }
 
-    try {
-        await requestPlanningEvaluationRequest(project.id);
-    } catch (error) {
-        const reason = error instanceof Error
-            ? error.message
-            : 'PLANNING_QUEUE_FAILED';
-        console.error(
-            `[project-create] project ${project.id} created but planning queue failed:`,
-            reason
-        );
-        return NextResponse.redirect(
-            publicUrl(`/StagePilot/projects/${project.id}/planning?error=chat-account-required`),
-            303
-        );
-    }
-
     return NextResponse.redirect(
-        publicUrl(`/StagePilot/projects/${project.id}/planning?success=created-and-queued`),
+        publicUrl(`/StagePilot/projects/${project.id}?tab=settings&success=created`),
         303
     );
 }

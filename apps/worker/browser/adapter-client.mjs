@@ -56,6 +56,10 @@ const allowed = [
 
     'new-chat',
 
+    'new-project',
+
+    'open-target',
+
     'open-conversation',
 
     'send-state',

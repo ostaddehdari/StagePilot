@@ -24,6 +24,7 @@ export type PlanningWorkspace = {
         title: string;
         summary: string;
         proposal_json: Record<string, unknown>;
+        proposal_html: string;
         created_by: string;
         approved_at: string | null;
         created_at: string;

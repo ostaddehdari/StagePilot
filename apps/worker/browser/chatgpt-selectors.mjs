@@ -44,6 +44,18 @@ export const CHATGPT_SELECTOR_REGISTRY =
 
         ],
 
+        newProject: [
+
+            'button[data-testid*="new-project" i]',
+
+            'a[data-testid*="new-project" i]',
+
+            'button[aria-label*="new project" i]',
+
+            'a[aria-label*="new project" i]'
+
+        ],
+
         conversationLink: [
 
             'a[href*="/c/"]'

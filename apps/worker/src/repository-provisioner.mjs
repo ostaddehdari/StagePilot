@@ -50,13 +50,20 @@ async function loadProjectConfiguration(db, projectId) {
                 p.current_plan_revision,
                 ppv.proposal_json,
                 ss.value AS site_value, ss.secret_refs,
-                gap.id AS access_profile_id
+                gap.id AS access_profile_id,
+                gc.secret_ref AS custom_secret_ref
          FROM projects p
          JOIN project_plan_versions ppv
            ON ppv.project_id = p.id AND ppv.status = 'approved'
          LEFT JOIN system_settings ss ON ss.setting_key = 'global'
          LEFT JOIN github_access_profiles gap
-           ON lower(gap.owner_login) = lower(ss.value->>'githubOwner')
+           ON gap.profile_key = CASE
+                WHEN p.settings->>'githubMode' = 'custom'
+                THEN 'github-project-' || p.id::text
+                ELSE 'github-' || lower(ss.value->>'githubOwner')
+              END
+         LEFT JOIN github_credentials gc
+           ON gc.profile_id = gap.id AND gc.purpose = 'repository_api'
          WHERE p.id = $1::uuid AND p.deleted_at IS NULL
          LIMIT 1`,
         [projectId]
@@ -73,10 +80,22 @@ async function ensureBinding(db, project) {
     );
     if (current.rowCount === 1) return current.rows[0];
 
-    const owner = String(project.site_value?.githubOwner ?? '').trim();
+    const custom = project.settings?.githubMode === 'custom';
+    const owner = String(
+        custom
+            ? project.settings?.githubOwner
+            : project.site_value?.githubOwner
+    ).trim();
     const repositoryName = String(project.settings?.repositoryName ?? project.slug).trim();
-    const visibility = String(project.site_value?.defaultVisibility ?? 'private');
-    const secretRef = project.secret_refs?.githubToken;
+    const visibility = String(
+        (custom
+            ? project.settings?.repositoryVisibility
+            : project.site_value?.defaultVisibility)
+        ?? 'private'
+    );
+    const secretRef = custom
+        ? project.custom_secret_ref
+        : project.secret_refs?.githubToken;
     if (!owner || !project.access_profile_id || !secretRef) {
         throw new Error('GITHUB_SETTINGS_REQUIRED');
     }
@@ -144,7 +163,11 @@ async function initializeWorkspace(db, project, binding) {
     }
     await mkdir(WORKSPACE_ROOT, { recursive: true, mode: 0o750 });
     const remoteUrl = `https://github.com/${binding.full_name}.git`;
-    const env = await gitEnvironment(project.secret_refs.githubToken);
+    const custom = project.settings?.githubMode === 'custom';
+    const selectedSecretRef = custom
+        ? project.custom_secret_ref
+        : project.secret_refs?.githubToken;
+    const env = await gitEnvironment(selectedSecretRef);
 
     if (!await exists(join(workspacePath, '.git'))) {
         const clone = await runProcess('git', ['clone', remoteUrl, workspacePath], {
@@ -237,6 +260,10 @@ export async function ensureProjectRepository(db, projectId) {
         project,
         binding,
         workspace,
-        gitEnv: await gitEnvironment(project.secret_refs.githubToken)
+        gitEnv: await gitEnvironment(
+            project.settings?.githubMode === 'custom'
+                ? project.custom_secret_ref
+                : project.secret_refs?.githubToken
+        )
     };
 }

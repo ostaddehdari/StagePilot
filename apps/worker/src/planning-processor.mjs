@@ -49,8 +49,9 @@ export async function claimPlanningRequest(db, workerKey) {
 async function requestContext(db, requestId) {
     const result = await db.query(
         `SELECT pr.*, p.name AS project_name,
-                a.id AS account_id, a.profile_key,
-                c.external_url, c.external_chat_id, c.status AS conversation_status
+                a.id AS account_id, a.profile_key, p.settings,
+                c.external_url, c.external_chat_id, c.status AS conversation_status,
+                c.started_reason
          FROM prompt_requests pr
          JOIN projects p ON p.id = pr.project_id
          JOIN chat_accounts a ON a.id = p.selected_chat_account_id
@@ -168,6 +169,12 @@ export async function processPlanningRequest(db, request) {
             profileKey: row.profile_key,
             accountId: row.account_id,
             conversationUrl: row.external_url,
+            createProjectName:
+                !row.external_url
+                && row.started_reason === 'new_chatgpt_project_requested'
+                && row.settings?.chatTargetType === 'project'
+                    ? row.project_name
+                    : null,
             operationId: `plan:${row.id}`,
             promptText: row.prompt_text,
             timeoutMs: Number(process.env.STAGEPILOT_AI_RESPONSE_TIMEOUT_MS ?? 240_000)

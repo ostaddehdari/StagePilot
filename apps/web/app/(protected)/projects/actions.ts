@@ -17,10 +17,7 @@ import {
     updateProjectRequest
 } from '../../../lib/projects';
 
-import {
-    requestPlanningEvaluationRequest
-} from '../../../lib/planning';
-
+import { controlProjectAutomationRequest } from '../../../lib/automation';
 
 export async function createProjectAction(
     formData: FormData
@@ -95,29 +92,33 @@ export async function createProjectAction(
     );
 
 
-    let planningQueued = false;
-
-
-    try {
-
-        await requestPlanningEvaluationRequest(
-            String(projectId)
-        );
-
-
-        planningQueued = true;
-
-    } catch {
-
-        planningQueued = false;
-
-    }
-
-
     redirect(
-        `/projects/${projectId}/planning?${planningQueued ? 'success=created-and-queued' : 'error=chat-account-required'}`
+        `/projects/${projectId}?tab=settings&success=created`
     );
 
+}
+
+
+export async function pauseProjectAction(
+    projectId: string,
+    formData: FormData
+) {
+    try {
+        await updateProjectRequest(projectId, {
+            name: String(formData.get('name') ?? '').trim(),
+            slug: String(formData.get('slug') ?? '').trim(),
+            description: String(formData.get('description') ?? '').trim(),
+            status: 'paused',
+            repositoryName: String(formData.get('repositoryName') ?? '').trim(),
+            chatMode: String(formData.get('chatMode') ?? 'existing').trim()
+        });
+        await controlProjectAutomationRequest(projectId, 'pause');
+    } catch {
+        redirect('/projects?error=pause');
+    }
+    revalidatePath('/projects');
+    revalidatePath(`/projects/${projectId}`);
+    redirect('/projects?success=pause');
 }
 
 

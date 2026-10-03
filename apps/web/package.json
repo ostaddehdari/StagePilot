@@ -8,6 +8,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@fontsource/vazirmatn": "5.2.8",
     "@fortawesome/fontawesome-free": "7.1.0",
     "bootstrap": "5.3.8",
     "next": "16.3.6",

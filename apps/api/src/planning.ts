@@ -491,7 +491,7 @@ export async function getPlanningWorkspace(
                 [projectId]
             ),
             db.query(
-                `SELECT id, version, status, title, summary, proposal_json,
+                `SELECT id, version, status, title, summary, proposal_json, proposal_html,
                         source_response_id, created_by, approved_at, created_at, updated_at
                  FROM project_plan_versions
                  WHERE project_id = $1::uuid

@@ -2,6 +2,7 @@ import Link from 'next/link';
 
 import {
     deleteProjectAction,
+    pauseProjectAction,
     updateProjectAction
 } from './actions';
 
@@ -124,7 +125,7 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
                 ) : (
                     <div className="table-responsive">
                         <table className="table stagepilot-data-table align-middle">
-                            <thead><tr><th>پروژه</th><th>وضعیت</th><th>Stage / Work</th><th>پیشرفت معتبر</th><th>مخزن</th><th>عملیات</th></tr></thead>
+                            <thead><tr><th>پروژه</th><th>وضعیت</th><th>Stage</th><th>Work انجام‌شده / کل</th><th>پیشرفت معتبر</th><th>مخزن</th><th>عملیات</th></tr></thead>
                             <tbody>
                                 {projects.map(project => {
                                     const settings = project.settings ?? {};
@@ -137,7 +138,8 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
                                                 <div className="stagepilot-table-description">{project.description || 'بدون توضیح کوتاه'}</div>
                                             </td>
                                             <td><span className={`stagepilot-state-badge state-${project.status}`}>{statusLabel(project.status)}</span></td>
-                                            <td><strong>{numberFormat(project.stage_count)}</strong><span className="stagepilot-table-separator">/</span><strong>{numberFormat(project.work_count)}</strong></td>
+                                            <td><strong>{numberFormat(project.stage_count)}</strong></td>
+                                            <td><strong>{numberFormat(project.completed_work_count)}</strong><span className="stagepilot-table-separator">/</span><strong>{numberFormat(project.work_count)}</strong></td>
                                             <td className="stagepilot-progress-cell">
                                                 <div className="stagepilot-progress-track"><span style={{ width: `${Math.min(100, project.progress_percent)}%` }} /></div>
                                                 <small>{numberFormat(project.progress_percent)}٪</small>
@@ -145,8 +147,17 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
                                             <td><code>{repositoryName}</code></td>
                                             <td>
                                                 <div className="stagepilot-row-actions">
-                                                    <Link href={`/projects/${project.id}`} className="btn btn-sm btn-dark">مرکز کنترل</Link>
-                                                    <Link href={`/projects/${project.id}/planning`} className="btn btn-sm btn-outline-primary">پروپوزال</Link>
+                                                    <Link href={`/projects/${project.id}`} className="btn btn-sm btn-dark"><i className="fa-solid fa-eye" /> نمایش</Link>
+                                                    {project.status !== 'paused' && project.status !== 'completed' && (
+                                                        <form action={pauseProjectAction.bind(null, project.id)}>
+                                                            <input type="hidden" name="name" value={project.name} />
+                                                            <input type="hidden" name="slug" value={project.slug} />
+                                                            <input type="hidden" name="description" value={project.description ?? ''} />
+                                                            <input type="hidden" name="repositoryName" value={repositoryName === '—' ? '' : repositoryName} />
+                                                            <input type="hidden" name="chatMode" value={String(settings.chatMode ?? 'existing')} />
+                                                            <button type="submit" className="btn btn-sm btn-outline-warning"><i className="fa-solid fa-pause" /> توقف</button>
+                                                        </form>
+                                                    )}
                                                     <details className="stagepilot-row-menu">
                                                         <summary className="btn btn-sm btn-outline-secondary">ویرایش</summary>
                                                         <form action={updateProjectAction.bind(null, project.id)} className="stagepilot-inline-editor">

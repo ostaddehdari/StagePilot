@@ -624,6 +624,100 @@ async function navigateNewChat(
 }
 
 
+async function openChatTarget(
+    page,
+    rawUrl
+) {
+    if (typeof rawUrl !== 'string' || rawUrl.length < 10 || rawUrl.length > 4096) {
+        throw new Error('INVALID_CHAT_TARGET_URL');
+    }
+    const url = new URL(rawUrl);
+    if (url.protocol !== 'https:' || (url.hostname !== 'chatgpt.com' && !url.hostname.endsWith('.chatgpt.com'))) {
+        throw new Error('CHAT_TARGET_URL_NOT_ALLOWED');
+    }
+    url.hash = '';
+    await page.goto(url.href, { waitUntil: 'domcontentloaded', timeout: 45000 });
+    await waitAfterNavigation(page);
+    const snapshot = await inspectPage(page);
+    if (!snapshot.route.validChatGPT) {
+        throw new Error(`CHAT_TARGET_NOT_CONFIRMED:${snapshot.url}`);
+    }
+    if (!await firstComposer(page)) {
+        throw new Error(`CHAT_TARGET_COMPOSER_NOT_FOUND:${snapshot.url}`);
+    }
+    return { targetConfirmed: true, snapshot };
+}
+
+
+async function createChatGPTProject(
+    page,
+    rawName
+) {
+    const projectName = typeof rawName === 'string' ? rawName.trim() : '';
+    if (projectName.length < 2 || projectName.length > 100) {
+        throw new Error('INVALID_CHATGPT_PROJECT_NAME');
+    }
+    await page.goto('https://chatgpt.com/', { waitUntil: 'domcontentloaded', timeout: 45000 });
+    await waitAfterNavigation(page);
+
+    let clicked = false;
+    for (const selector of CHATGPT_SELECTOR_REGISTRY.newProject ?? []) {
+        const handle = await page.$(selector);
+        if (handle) {
+            await handle.click();
+            clicked = true;
+            break;
+        }
+    }
+    if (!clicked) {
+        clicked = await page.evaluate(() => {
+            const pattern = /^(new project|create project|پروژه جدید|ساخت پروژه)$/i;
+            const candidates = [...document.querySelectorAll('button, a, [role="button"]')];
+            const target = candidates.find(element => pattern.test((element.textContent ?? element.getAttribute('aria-label') ?? '').trim()));
+            if (!(target instanceof HTMLElement)) return false;
+            target.click();
+            return true;
+        });
+    }
+    if (!clicked) throw new Error('CHATGPT_NEW_PROJECT_CONTROL_NOT_FOUND');
+    await sleep(800);
+
+    const inputs = await page.$$('div[role="dialog"] input, input[placeholder*="project" i], input[placeholder*="name" i]');
+    let input = null;
+    for (const candidate of inputs) {
+        const visible = await page.evaluate(element => {
+            const rect = element.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0 && !element.hasAttribute('disabled');
+        }, candidate);
+        if (visible) { input = candidate; break; }
+    }
+    if (!input) throw new Error('CHATGPT_PROJECT_NAME_INPUT_NOT_FOUND');
+    await input.click({ clickCount: 3 });
+    await page.keyboard.type(projectName, { delay: 12 });
+
+    const submitted = await page.evaluate(() => {
+        const pattern = /^(create|create project|ساخت|ایجاد|ساخت پروژه)$/i;
+        const root = document.querySelector('div[role="dialog"]') ?? document;
+        const candidates = [...root.querySelectorAll('button, [role="button"]')];
+        const target = candidates.find(element => {
+            const label = (element.textContent ?? element.getAttribute('aria-label') ?? '').trim();
+            return pattern.test(label) && element.getAttribute('aria-disabled') !== 'true' && !(element instanceof HTMLButtonElement && element.disabled);
+        });
+        if (!(target instanceof HTMLElement)) return false;
+        target.click();
+        return true;
+    });
+    if (!submitted) throw new Error('CHATGPT_PROJECT_CREATE_BUTTON_NOT_FOUND');
+    await sleep(2500);
+    const snapshot = await inspectPage(page);
+    if (!snapshot.route.validChatGPT || snapshot.route.routeType === 'new-chat') {
+        throw new Error(`CHATGPT_PROJECT_CREATION_NOT_CONFIRMED:${snapshot.url}`);
+    }
+    if (!await firstComposer(page)) throw new Error('CHATGPT_PROJECT_COMPOSER_NOT_FOUND');
+    return { projectCreated: true, projectName, snapshot };
+}
+
+
 async function openConversation(
     page,
     rawUrl
@@ -1124,6 +1218,7 @@ async function draftPrompt({
     if (
         route.routeType !== 'new-chat'
         && route.routeType !== 'conversation'
+        && !(route.routeType === 'other' && route.projectScoped)
     ) {
 
         throw new Error(
@@ -1961,6 +2056,54 @@ export async function startChatGPTAdapter({
                     ...await openConversation(
                         page,
                         request?.url
+                    )
+
+                };
+
+            }
+
+
+            if (
+                action
+                ===
+                'open-target'
+            ) {
+
+                return {
+
+                    ok:
+                        true,
+
+                    navigationState:
+                        'CHAT_TARGET_CONFIRMED',
+
+                    ...await openChatTarget(
+                        page,
+                        request?.url
+                    )
+
+                };
+
+            }
+
+
+            if (
+                action
+                ===
+                'new-project'
+            ) {
+
+                return {
+
+                    ok:
+                        true,
+
+                    navigationState:
+                        'NEW_PROJECT_CONFIRMED',
+
+                    ...await createChatGPTProject(
+                        page,
+                        request?.name
                     )
 
                 };

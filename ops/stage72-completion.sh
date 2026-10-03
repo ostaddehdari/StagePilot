@@ -162,11 +162,17 @@ done
 API_HEALTH_URL="${STAGEPILOT_API_HEALTH_URL:-http://127.0.0.1:19101/health}"
 WEB_HEALTH_URL="${STAGEPILOT_WEB_HEALTH_URL:-http://127.0.0.1:19100/StagePilot/login}"
 
-curl --fail --silent --show-error --max-time 15 "$API_HEALTH_URL" \
+curl --fail --silent --show-error \
+    --retry 30 --retry-all-errors --retry-delay 1 --retry-max-time 45 \
+    --connect-timeout 3 --max-time 10 "$API_HEALTH_URL" \
     > "$BACKUP_ROOT/api-health.json"
-curl --fail --silent --show-error --max-time 15 "$WEB_HEALTH_URL" \
+curl --fail --silent --show-error \
+    --retry 30 --retry-all-errors --retry-delay 1 --retry-max-time 45 \
+    --connect-timeout 3 --max-time 10 "$WEB_HEALTH_URL" \
     > "$BACKUP_ROOT/web-login.html"
-curl --fail --silent --show-error --max-time 20 "$PUBLIC_HEALTH_URL" \
+curl --fail --silent --show-error \
+    --retry 10 --retry-all-errors --retry-delay 2 --retry-max-time 45 \
+    --connect-timeout 5 --max-time 15 "$PUBLIC_HEALTH_URL" \
     > "$BACKUP_ROOT/public-login.html"
 
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<SQL

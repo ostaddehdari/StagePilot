@@ -506,9 +506,11 @@ export async function deleteProject(
          SET deleted_at = now(),
              status = 'paused',
              updated_at = now(),
+             slug = 'deleted-' || replace(id::text, '-', '') || '-' || slug,
              settings = settings || jsonb_build_object(
                 'deletedBy', 'private-admin',
-                'deletedAt', now()
+                'deletedAt', now(),
+                'originalSlug', slug
              )
          WHERE id = $1::uuid
            AND deleted_at IS NULL

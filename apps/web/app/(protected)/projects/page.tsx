@@ -1,7 +1,6 @@
 import Link from 'next/link';
 
 import {
-    createProjectAction,
     deleteProjectAction,
     updateProjectAction
 } from './actions';
@@ -13,8 +12,27 @@ import type { ProjectListItem } from '../../../lib/projects';
 export const dynamic = 'force-dynamic';
 
 type ProjectsPageProps = {
-    searchParams: Promise<{ error?: string; success?: string }>;
+    searchParams: Promise<{ error?: string; reason?: string; success?: string }>;
 };
+
+function projectErrorMessage(error?: string, reason?: string) {
+    if (reason === 'PROJECT_SLUG_EXISTS') {
+        return 'این شناسه قبلاً استفاده شده است. شناسه دیگری وارد کنید یا فیلد شناسه را خالی بگذارید تا خودکار ساخته شود.';
+    }
+    if (reason === 'INVALID_PROJECT_SLUG') {
+        return 'شناسه باید انگلیسی و شامل حروف کوچک، عدد یا خط تیره باشد. می‌توانید این فیلد را خالی بگذارید.';
+    }
+    if (reason === 'INVALID_PROJECT_NAME') {
+        return 'نام پروژه معتبر نیست؛ حداقل دو نویسه وارد کنید.';
+    }
+    if (reason === 'INVALID_PROJECT_REQUEST') {
+        return 'ایده و نیازمندی اولیه باید حداقل ده نویسه داشته باشد.';
+    }
+    if (error === 'csrf') {
+        return 'نشست امنیتی معتبر نیست. صفحه را تازه‌سازی و دوباره تلاش کنید.';
+    }
+    return 'عملیات پروژه انجام نشد. داده‌ها و وابستگی‌ها را بررسی کنید.';
+}
 
 function numberFormat(value: number) {
     return new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 1 }).format(value);
@@ -61,7 +79,7 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
                                 <div><span>NEW PROJECT</span><h3>ایده را ثبت کنید</h3></div>
                                 <p>پس از ثبت، گفت‌وگوی تحلیل ایده و ساخت پروپوزال آغاز می‌شود.</p>
                             </div>
-                            <form action={createProjectAction} className="stagepilot-form-grid">
+                            <form action="/StagePilot/api/projects/create" method="post" className="stagepilot-form-grid">
                                 <label>
                                     <span>نام پروژه</span>
                                     <input name="name" required minLength={2} maxLength={160} autoComplete="organization" placeholder="مثلاً سامانه مدیریت محتوای هوشمند" />
@@ -88,7 +106,7 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
             </section>
 
             {params.success && <div className="alert alert-success">عملیات پروژه با موفقیت انجام شد.</div>}
-            {params.error && <div className="alert alert-danger">عملیات پروژه انجام نشد. داده‌ها و وابستگی‌ها را بررسی کنید.</div>}
+            {params.error && <div className="alert alert-danger">{projectErrorMessage(params.error, params.reason)}</div>}
             {apiError && <div className="alert alert-warning">API پروژه‌ها در دسترس نیست.</div>}
 
             <section className="stagepilot-panel stagepilot-table-panel">

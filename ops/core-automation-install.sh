@@ -84,6 +84,11 @@ install -d -o "$RUNTIME_USER" -g "$RUNTIME_GROUP" -m 0700 \
 
 npm ci
 npm run build
+
+chown -R "$RUNTIME_USER:$RUNTIME_GROUP" apps/web/.next
+find apps/web/.next -type d -exec chmod 755 {} +
+find apps/web/.next -type f -exec chmod 644 {} +
+
 npm run manager:plan-test --workspace @stagepilot/worker
 npm run automation:selftest --workspace @stagepilot/worker
 
@@ -128,6 +133,7 @@ fi
 
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/012_stage72_completion.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/013_core_automation.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/014_project_creation_reliability.sql
 
 for service_name in "${SERVICES[@]}"; do
     systemctl restart "$service_name"

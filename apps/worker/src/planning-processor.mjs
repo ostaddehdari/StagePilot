@@ -14,6 +14,9 @@ export async function claimPlanningRequest(db, workerKey) {
         const selected = await client.query(
             `SELECT pr.id
              FROM prompt_requests pr
+             JOIN projects p
+               ON p.id = pr.project_id
+              AND p.deleted_at IS NULL
              WHERE pr.request_type = 'project_plan'
                AND pr.status IN ('created', 'retry')
                AND (pr.next_attempt_at IS NULL OR pr.next_attempt_at <= now())

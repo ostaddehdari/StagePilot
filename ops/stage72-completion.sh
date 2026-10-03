@@ -42,7 +42,7 @@ printf 'Started: %s\n' "$(date -u +%FT%TZ)"
 printf 'Project root: %s\n' "$PROJECT_ROOT"
 printf 'Target ref: %s\n' "$TARGET_REF"
 
-for command_name in git node npm psql curl systemctl ss; do
+for command_name in git node npm psql curl systemctl ss sudo; do
     require_command "$command_name"
 done
 
@@ -121,9 +121,26 @@ export STAGEPILOT_BROWSER_PROFILE_ROOT="$SELFTEST_ROOT/browser-profiles"
 export STAGEPILOT_BROWSER_LOCK_ROOT="$SELFTEST_ROOT/browser-locks"
 export STAGEPILOT_BROWSER_CAPACITY_ROOT="$SELFTEST_ROOT/browser-capacity"
 
-node apps/worker/browser/lock-selftest.mjs
-node apps/worker/browser/browser-capacity-selftest.mjs
-node apps/worker/browser/validator-selftest.mjs
+install -d \
+    -o "$RUNTIME_USER" \
+    -g "$RUNTIME_GROUP" \
+    -m 0700 \
+    "$STAGEPILOT_BROWSER_PROFILE_ROOT" \
+    "$STAGEPILOT_BROWSER_LOCK_ROOT" \
+    "$STAGEPILOT_BROWSER_CAPACITY_ROOT"
+
+run_browser_selftest() {
+    sudo -u "$RUNTIME_USER" -H env \
+        "STAGEPILOT_BROWSER_EXECUTABLE=${STAGEPILOT_BROWSER_EXECUTABLE:-/usr/bin/google-chrome-stable}" \
+        "STAGEPILOT_BROWSER_PROFILE_ROOT=$STAGEPILOT_BROWSER_PROFILE_ROOT" \
+        "STAGEPILOT_BROWSER_LOCK_ROOT=$STAGEPILOT_BROWSER_LOCK_ROOT" \
+        "STAGEPILOT_BROWSER_CAPACITY_ROOT=$STAGEPILOT_BROWSER_CAPACITY_ROOT" \
+        node "$1"
+}
+
+run_browser_selftest apps/worker/browser/lock-selftest.mjs
+run_browser_selftest apps/worker/browser/browser-capacity-selftest.mjs
+run_browser_selftest apps/worker/browser/validator-selftest.mjs
 
 while IFS= read -r test_file; do
     node "$test_file"

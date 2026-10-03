@@ -101,6 +101,10 @@ rg -q "browser-monitor-start" apps/web/app/api/projects/'[id]'/control/route.ts 
     || fail 'project noVNC monitor action missing'
 rg -q 'transportHistory' apps/web/components/project-control-center.tsx \
     || fail 'project ChatGPT progress timeline missing'
+rg -q "s04-w02-v2" apps/worker/browser/chatgpt-selectors.mjs \
+    || fail 'resilient ChatGPT composer selectors missing'
+rg -q 'browser-diagnostics' apps/worker/browser/chatgpt-adapter.mjs \
+    || fail 'browser failure diagnostic capture missing'
 
 systemctl stop "$WORKER_SERVICE"
 WORKER_WAS_STOPPED=1
@@ -111,7 +115,14 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/014_project_creat
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/015_unified_project_workspace.sql
 
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
-WITH recovered AS (
+WITH latest_composer_failure AS (
+    SELECT DISTINCT ON (project_id) id
+    FROM prompt_requests
+    WHERE request_type = 'project_plan'
+      AND status = 'failed'
+      AND last_error IN ('COMPOSER_NOT_FOUND', 'COMPOSER_NOT_FOUND_BEFORE_SEND')
+    ORDER BY project_id, created_at DESC
+), recovered AS (
     UPDATE prompt_requests
     SET status = 'retry',
         claimed_at = NULL,
@@ -124,7 +135,10 @@ WITH recovered AS (
             'transportUpdatedAt', now()::text
         )
     WHERE request_type = 'project_plan'
-      AND status IN ('processing', 'sent', 'waiting_response')
+      AND (
+          status IN ('processing', 'sent', 'waiting_response')
+          OR id IN (SELECT id FROM latest_composer_failure)
+      )
     RETURNING id
 )
 SELECT count(*) AS recovered_chatgpt_requests FROM recovered;
@@ -195,6 +209,7 @@ printf '%s\n' 'ChatGPT project transport: PASS'
 printf '%s\n' 'ChatGPT live progress timeline: PASS'
 printf '%s\n' 'Project noVNC monitor: PASS'
 printf '%s\n' 'Detailed failure diagnostics: PASS'
+printf '%s\n' 'Resilient ChatGPT composer detection: PASS'
 printf '%s\n' 'Per-project GitHub credentials: PASS'
 printf '%s\n' 'STAGEPILOT_UNIFIED_PROJECT=PASS'
 printf 'Finished: %s\n' "$(date -u +%FT%TZ)"

@@ -299,6 +299,9 @@ export async function processPlanningRequest(db, request) {
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const stack = error instanceof Error ? error.stack ?? '' : '';
+        const diagnostic = error && typeof error === 'object' && 'diagnostic' in error
+            ? error.diagnostic
+            : null;
         const failedAt = new Date().toISOString();
         await db.query(
             `UPDATE prompt_requests
@@ -308,7 +311,8 @@ export async function processPlanningRequest(db, request) {
                     'transportUpdatedAt', $3::text,
                     'transportHistory', COALESCE(context_json->'transportHistory', '[]'::jsonb)
                         || $4::jsonb,
-                    'failureStack', $5::text
+                    'failureStack', $5::text,
+                    'failureDiagnostic', $6::jsonb
                  )
              WHERE id = $1::uuid`,
             [
@@ -316,7 +320,8 @@ export async function processPlanningRequest(db, request) {
                 message.slice(0, 4000),
                 failedAt,
                 JSON.stringify([{ stage: 'failed', at: failedAt, error: message.slice(0, 4000) }]),
-                stack.slice(0, 12_000)
+                stack.slice(0, 12_000),
+                JSON.stringify(diagnostic)
             ]
         );
         if (row.project_id ?? request.project_id) {
@@ -342,7 +347,8 @@ export async function processPlanningRequest(db, request) {
                         stack: stack.slice(0, 12_000),
                         accountId: row.account_id ?? null,
                         profileKey: row.profile_key ?? null,
-                        conversationUrl: row.external_url ?? null
+                        conversationUrl: row.external_url ?? null,
+                        browserDiagnostic: diagnostic
                     })
                 ]
             );

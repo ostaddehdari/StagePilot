@@ -53,6 +53,12 @@ const ADAPTER_ROOT =
     ??
     '/opt/stagepilot/runtime/browser-adapter';
 
+const DIAGNOSTIC_ROOT =
+    process.env
+        .STAGEPILOT_BROWSER_DIAGNOSTIC_ROOT
+    ??
+    '/opt/stagepilot/runtime/browser-diagnostics';
+
 
 function validateProfileKey(
     profileKey
@@ -543,6 +549,236 @@ async function inspectPage(
 }
 
 
+async function captureAdapterFailure({
+    page,
+    profileKey,
+    action,
+    error
+}) {
+
+    await mkdir(
+        DIAGNOSTIC_ROOT,
+        {
+            recursive:
+                true,
+
+            mode:
+                0o700
+        }
+    );
+
+
+    const safeAction =
+        String(action || 'unknown')
+            .replace(/[^A-Za-z0-9_-]/g, '_')
+            .slice(0, 60);
+
+    const basename =
+        `${Date.now()}-${profileKey}-${safeAction}`;
+
+    const screenshotPath =
+        join(
+            DIAGNOSTIC_ROOT,
+            `${basename}.png`
+        );
+
+    const jsonPath =
+        join(
+            DIAGNOSTIC_ROOT,
+            `${basename}.json`
+        );
+
+
+    let screenshotSaved =
+        false;
+
+
+    try {
+
+        await page.screenshot({
+            path:
+                screenshotPath,
+
+            fullPage:
+                false
+        });
+
+        screenshotSaved =
+            true;
+
+    } catch {
+
+        screenshotSaved =
+            false;
+
+    }
+
+
+    const diagnostic = {
+
+        at:
+            new Date()
+                .toISOString(),
+
+        action:
+            safeAction,
+
+        error:
+            error instanceof Error
+            ? error.message
+            : String(error),
+
+        screenshotPath:
+            screenshotSaved
+            ? screenshotPath
+            : null,
+
+        jsonPath,
+
+        snapshot:
+            await inspectPage(page)
+                .catch(
+                    inspectError => ({
+                        failed:
+                            true,
+
+                        error:
+                            inspectError instanceof Error
+                            ? inspectError.message
+                            : String(inspectError)
+                    })
+                ),
+
+        dom:
+            await page.evaluate(
+                () => ({
+
+                    readyState:
+                        document.readyState,
+
+                    activeElement: {
+
+                        tag:
+                            document.activeElement?.tagName
+                            ??
+                            null,
+
+                        id:
+                            document.activeElement?.id
+                            ??
+                            null,
+
+                        role:
+                            document.activeElement?.getAttribute?.('role')
+                            ??
+                            null
+
+                    },
+
+                    editableCandidates:
+                        Array.from(
+                            document.querySelectorAll(
+                                'textarea, input, [contenteditable], [role="textbox"]'
+                            )
+                        )
+                            .slice(0, 80)
+                            .map(
+                                element => {
+
+                                    const rect =
+                                        element.getBoundingClientRect();
+
+                                    return {
+
+                                        tag:
+                                            element.tagName,
+
+                                        id:
+                                            element.id
+                                            ||
+                                            null,
+
+                                        role:
+                                            element.getAttribute('role'),
+
+                                        contenteditable:
+                                            element.getAttribute('contenteditable'),
+
+                                        testId:
+                                            element.getAttribute('data-testid'),
+
+                                        placeholder:
+                                            element.getAttribute('placeholder'),
+
+                                        ariaLabel:
+                                            element.getAttribute('aria-label'),
+
+                                        visible:
+                                            rect.width > 0
+                                            &&
+                                            rect.height > 0
+
+                                    };
+
+                                }
+                            ),
+
+                    controls:
+                        Array.from(
+                            document.querySelectorAll(
+                                'button, a[role="button"]'
+                            )
+                        )
+                            .slice(0, 80)
+                            .map(
+                                element => ({
+
+                                    label:
+                                        (
+                                            element.getAttribute('aria-label')
+                                            ||
+                                            element.textContent
+                                            ||
+                                            ''
+                                        )
+                                            .trim()
+                                            .replace(/\s+/g, ' ')
+                                            .slice(0, 120),
+
+                                    testId:
+                                        element.getAttribute('data-testid')
+
+                                })
+                            )
+
+                })
+            )
+                .catch(
+                    domError => ({
+                        failed:
+                            true,
+
+                        error:
+                            domError instanceof Error
+                            ? domError.message
+                            : String(domError)
+                    })
+                )
+
+    };
+
+
+    await writeJsonAtomic(
+        jsonPath,
+        diagnostic
+    );
+
+
+    return diagnostic;
+
+}
+
+
 async function waitAfterNavigation(
     page
 ) {
@@ -642,9 +878,15 @@ async function openChatTarget(
     if (!snapshot.route.validChatGPT) {
         throw new Error(`CHAT_TARGET_NOT_CONFIRMED:${snapshot.url}`);
     }
-    if (!await firstComposer(page)) {
+    let targetComposer = await waitForComposer(page, 30000);
+    if (!targetComposer) {
+        await activateProjectComposer(page);
+        targetComposer = await waitForComposer(page, 15000);
+    }
+    if (!targetComposer) {
         throw new Error(`CHAT_TARGET_COMPOSER_NOT_FOUND:${snapshot.url}`);
     }
+    await targetComposer.handle.dispose();
     return { targetConfirmed: true, snapshot };
 }
 
@@ -713,7 +955,9 @@ async function createChatGPTProject(
     if (!snapshot.route.validChatGPT || snapshot.route.routeType === 'new-chat') {
         throw new Error(`CHATGPT_PROJECT_CREATION_NOT_CONFIRMED:${snapshot.url}`);
     }
-    if (!await firstComposer(page)) throw new Error('CHATGPT_PROJECT_COMPOSER_NOT_FOUND');
+    const projectComposer = await waitForComposer(page, 30000);
+    if (!projectComposer) throw new Error('CHATGPT_PROJECT_COMPOSER_NOT_FOUND');
+    await projectComposer.handle.dispose();
     return { projectCreated: true, projectName, snapshot };
 }
 
@@ -879,6 +1123,174 @@ async function firstComposer(
 
 
     return null;
+
+}
+
+
+async function waitForComposer(
+    page,
+    timeoutMs = 30000
+) {
+
+    const deadline =
+        Date.now()
+        +
+        timeoutMs;
+
+
+    while (
+        Date.now()
+        <
+        deadline
+    ) {
+
+        const composer =
+            await firstComposer(
+                page
+            );
+
+
+        if (composer) {
+
+            await sleep(
+                500
+            );
+
+
+            const stable =
+                await page.evaluate(
+                    element => {
+
+                        if (!element.isConnected) return false;
+
+                        const rect =
+                            element.getBoundingClientRect();
+
+                        const style =
+                            window.getComputedStyle(element);
+
+                        return (
+                            rect.width > 0
+                            &&
+                            rect.height > 0
+                            &&
+                            style.display !== 'none'
+                            &&
+                            style.visibility !== 'hidden'
+                            &&
+                            style.pointerEvents !== 'none'
+                            &&
+                            element.getAttribute('aria-disabled') !== 'true'
+                        );
+
+                    },
+                    composer.handle
+                )
+                    .catch(
+                        () => false
+                    );
+
+
+            if (stable) {
+
+                return composer;
+
+            }
+
+
+            await composer.handle.dispose().catch(() => {});
+
+        }
+
+
+        await sleep(
+            500
+        );
+
+    }
+
+
+    return null;
+
+}
+
+
+async function activateProjectComposer(
+    page
+) {
+
+    const route =
+        parseChatGPTLocation(
+            page.url()
+        );
+
+
+    if (!route.projectScoped) return false;
+
+
+    const clicked =
+        await page.evaluate(
+            () => {
+
+                const pattern =
+                    /^(new chat|start (?:a )?chat|chat in (?:this )?project|شروع چت|چت جدید|گفتگوی جدید|شروع گفتگو)$/i;
+
+                const candidates =
+                    Array.from(
+                        document.querySelectorAll(
+                            'main button, main a, main [role="button"], button, a[role="button"]'
+                        )
+                    );
+
+                const target =
+                    candidates.find(
+                        element => {
+
+                            const label =
+                                (
+                                    element.getAttribute('aria-label')
+                                    ||
+                                    element.textContent
+                                    ||
+                                    ''
+                                )
+                                    .trim()
+                                    .replace(/\s+/g, ' ');
+
+                            const rect =
+                                element.getBoundingClientRect();
+
+                            return (
+                                pattern.test(label)
+                                &&
+                                rect.width > 0
+                                &&
+                                rect.height > 0
+                            );
+
+                        }
+                    );
+
+
+                if (!(target instanceof HTMLElement)) return false;
+
+                target.click();
+                return true;
+
+            }
+        );
+
+
+    if (clicked) {
+
+        await sleep(
+            2000
+        );
+
+    }
+
+
+    return clicked;
 
 }
 
@@ -1228,10 +1640,26 @@ async function draftPrompt({
     }
 
 
-    const composer =
-        await firstComposer(
+    let composer =
+        await waitForComposer(
+            page,
+            30000
+        );
+
+
+    if (!composer) {
+
+        await activateProjectComposer(
             page
         );
+
+        composer =
+            await waitForComposer(
+                page,
+                20000
+            );
+
+    }
 
 
     if (!composer) {
@@ -1536,8 +1964,9 @@ async function commitPrompt({
 
 
     const composer =
-        await firstComposer(
-            page
+        await waitForComposer(
+            page,
+            15000
         );
 
 
@@ -2466,13 +2895,19 @@ export async function startChatGPTAdapter({
                         void (
                             async () => {
 
+                                let request =
+                                    null;
+
                                 try {
+
+                                    request =
+                                        JSON.parse(
+                                            line
+                                        );
 
                                     respond(
                                         await handle(
-                                            JSON.parse(
-                                                line
-                                            )
+                                            request
                                         )
                                     );
 
@@ -2480,11 +2915,33 @@ export async function startChatGPTAdapter({
                                     error
                                 ) {
 
-                                    respond(
-                                        normalizeError(
+                                    const diagnostic =
+                                        await captureAdapterFailure({
+                                            page,
+                                            profileKey,
+                                            action:
+                                                request?.action
+                                                ??
+                                                'parse-request',
                                             error
-                                        )
-                                    );
+                                        })
+                                            .catch(
+                                                diagnosticError => ({
+                                                    captureFailed:
+                                                        true,
+                                                    error:
+                                                        diagnosticError instanceof Error
+                                                        ? diagnosticError.message
+                                                        : String(diagnosticError)
+                                                })
+                                            );
+
+                                    respond({
+                                        ...normalizeError(
+                                            error
+                                        ),
+                                        diagnostic
+                                    });
 
                                 }
 

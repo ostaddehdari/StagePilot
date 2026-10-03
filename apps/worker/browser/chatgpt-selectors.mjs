@@ -2,7 +2,7 @@ export const CHATGPT_SELECTOR_REGISTRY =
     Object.freeze({
 
         version:
-            's04-w02-v1',
+            's04-w02-v2',
 
         composer: [
 
@@ -10,9 +10,23 @@ export const CHATGPT_SELECTOR_REGISTRY =
 
             '[data-testid="prompt-textarea"]',
 
+            'textarea[name="prompt-textarea"]',
+
+            'form textarea[placeholder]',
+
+            'form div[contenteditable="true"][role="textbox"]',
+
+            'main div[contenteditable="true"][role="textbox"]',
+
             'div[role="textbox"][contenteditable="true"]',
 
             '[contenteditable="true"][data-lexical-editor="true"]',
+
+            'div.ProseMirror[contenteditable="true"]',
+
+            '[contenteditable="plaintext-only"]',
+
+            'form [contenteditable="true"]',
 
             'textarea'
 

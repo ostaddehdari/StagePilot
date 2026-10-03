@@ -75,7 +75,9 @@ export async function adapterRequest(profileKey, request, timeoutMs = 190_000) {
             try {
                 const result = JSON.parse(buffer.trim());
                 if (result?.ok !== true) {
-                    reject(new Error(result?.error ?? 'ADAPTER_REQUEST_FAILED'));
+                    const error = new Error(result?.error ?? 'ADAPTER_REQUEST_FAILED');
+                    error.diagnostic = result?.diagnostic ?? null;
+                    reject(error);
                     return;
                 }
                 resolve(result);

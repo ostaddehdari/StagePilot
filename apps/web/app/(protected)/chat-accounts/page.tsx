@@ -61,8 +61,8 @@ export default async function ChatAccountsPage({ searchParams }: PageProps) {
                         <div className="stagepilot-drawer-panel stagepilot-drawer-small">
                             <div className="stagepilot-drawer-heading"><div><span>NEW ACCOUNT</span><h3>ساخت Profile مستقل</h3></div></div>
                             <form action={createChatAccountAction} className="stagepilot-form-grid">
-                                <label className="stagepilot-form-wide"><span>نام حساب</span><input name="label" required minLength={2} maxLength={120} placeholder="مثلاً حساب اصلی Pro" /></label>
-                                <label className="stagepilot-form-wide"><span>یادداشت</span><textarea name="note" rows={3} maxLength={2000} placeholder="کاربرد این حساب و پروژه‌های مرتبط" /></label>
+                                <label className="stagepilot-form-wide"><span>نام حساب</span><input name="label" autoComplete="off" required minLength={2} maxLength={120} placeholder="مثلاً حساب اصلی Pro" /></label>
+                                <label className="stagepilot-form-wide"><span>یادداشت</span><textarea name="note" autoComplete="off" rows={3} maxLength={2000} placeholder="کاربرد این حساب و پروژه‌های مرتبط" /></label>
                                 <button type="submit" className="btn stagepilot-primary-button stagepilot-form-wide">ساخت Profile</button>
                             </form>
                         </div>
@@ -104,8 +104,8 @@ export default async function ChatAccountsPage({ searchParams }: PageProps) {
                                                 <details className="stagepilot-row-menu">
                                                     <summary className="btn btn-sm btn-outline-secondary">ویرایش</summary>
                                                     <form action={updateChatAccountAction.bind(null, account.id)} className="stagepilot-inline-editor">
-                                                        <label>نام<input name="label" defaultValue={account.label} required /></label>
-                                                        <label>یادداشت<textarea name="note" rows={3} defaultValue={String(account.metadata?.note ?? '')} /></label>
+                                                        <label>نام<input name="label" autoComplete="off" defaultValue={account.label} required /></label>
+                                                        <label>یادداشت<textarea name="note" autoComplete="off" rows={3} defaultValue={String(account.metadata?.note ?? '')} /></label>
                                                         <button type="submit" className="btn btn-sm btn-primary">ذخیره</button>
                                                     </form>
                                                 </details>

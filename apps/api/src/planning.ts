@@ -499,7 +499,8 @@ export async function getPlanningWorkspace(
                 [projectId]
             ),
             db.query(
-                `SELECT id, request_key, request_type, status, created_at, completed_at
+                `SELECT id, request_key, request_type, status, last_error,
+                        created_at, completed_at
                  FROM prompt_requests
                  WHERE project_id = $1::uuid
                    AND request_type = 'project_plan'
@@ -607,11 +608,59 @@ export async function requestPlanningEvaluation(
         const project = projectResult.rows[0];
 
         if (!project.selected_chat_account_id) {
-            throw new Error('PROJECT_CHAT_ACCOUNT_REQUIRED');
+
+            const accountResult = await client.query(
+                `SELECT id
+                 FROM chat_accounts
+                 WHERE deleted_at IS NULL
+                   AND status IN ('ready', 'authenticated')
+                 ORDER BY updated_at DESC
+                 LIMIT 1`
+            );
+
+            if (accountResult.rowCount !== 1) {
+                throw new Error('PROJECT_CHAT_ACCOUNT_REQUIRED');
+            }
+
+            project.selected_chat_account_id = accountResult.rows[0].id;
+            await client.query(
+                `UPDATE projects
+                 SET selected_chat_account_id = $2::uuid, updated_at = now()
+                 WHERE id = $1::uuid`,
+                [projectId, project.selected_chat_account_id]
+            );
+
         }
 
         if (!project.conversation_id) {
-            throw new Error('PROJECT_CONVERSATION_REQUIRED');
+
+            const sequenceResult = await client.query(
+                `SELECT COALESCE(MAX(sequence_no), 0) + 1 AS next_sequence
+                 FROM conversations
+                 WHERE project_id = $1::uuid`,
+                [projectId]
+            );
+
+            const conversationResult = await client.query(
+                `INSERT INTO conversations (
+                    project_id, chat_account_id, status, sequence_no,
+                    started_reason, metadata
+                 )
+                 VALUES (
+                    $1::uuid, $2::uuid, 'pending_creation', $3,
+                    'automatic_planning_cycle',
+                    jsonb_build_object('mode', 'new', 'automatic', true)
+                 )
+                 RETURNING id`,
+                [
+                    projectId,
+                    project.selected_chat_account_id,
+                    Number(sequenceResult.rows[0].next_sequence)
+                ]
+            );
+
+            project.conversation_id = conversationResult.rows[0].id;
+
         }
 
         const messagesResult = await client.query(
@@ -809,11 +858,20 @@ export async function saveProjectPlan(
 
 export async function approveProjectPlan(
     projectId: string,
-    planVersion: number
+    planVersion: number,
+    repositoryNameInput?: unknown
 ) {
 
     if (!Number.isInteger(planVersion) || planVersion < 1) {
         throw new Error('INVALID_PLAN_VERSION');
+    }
+
+    const repositoryName = typeof repositoryNameInput === 'string'
+        ? repositoryNameInput.trim()
+        : '';
+
+    if (repositoryName && !/^[A-Za-z0-9._-]{1,100}$/.test(repositoryName)) {
+        throw new Error('INVALID_REPOSITORY_NAME');
     }
 
     const db = getDatabasePool();
@@ -931,11 +989,39 @@ export async function approveProjectPlan(
                  current_plan_revision = $3,
                  settings = settings || jsonb_build_object(
                     'planningStatus', 'approved',
-                    'approvedPlanVersion', $3::integer
+                    'approvedPlanVersion', $3::integer,
+                    'automationMode', 'automatic',
+                    'automationStatus', 'queued',
+                    'repositoryName', COALESCE(
+                        NULLIF($4::text, ''),
+                        NULLIF(settings->>'repositoryName', ''),
+                        slug
+                    )
                  ),
                  updated_at = now()
              WHERE id = $1::uuid AND deleted_at IS NULL`,
-            [projectId, plan.projectName, planVersion]
+            [projectId, plan.projectName, planVersion, repositoryName]
+        );
+
+        await client.query(
+            `INSERT INTO project_automation_state (
+                project_id, status, mode, max_work_attempts, started_at, metadata
+             ) VALUES (
+                $1::uuid, 'queued', 'automatic', 3, now(),
+                jsonb_build_object(
+                    'approvedPlanVersion', $2::integer,
+                    'startedBy', 'plan_approval'
+                )
+             )
+             ON CONFLICT (project_id) DO UPDATE SET
+                status = 'queued', mode = 'automatic',
+                current_stage_id = NULL, current_work_id = NULL,
+                lease_owner = NULL, lease_expires_at = NULL,
+                last_error = NULL, completed_at = NULL,
+                started_at = COALESCE(project_automation_state.started_at, now()),
+                metadata = project_automation_state.metadata || EXCLUDED.metadata,
+                updated_at = now()`,
+            [projectId, planVersion]
         );
 
         await client.query(

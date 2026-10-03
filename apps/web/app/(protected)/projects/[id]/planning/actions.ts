@@ -27,9 +27,14 @@ export async function addPlanningCommentAction(
 
 
 export async function requestPlanningEvaluationAction(
-    projectId: string
+    projectId: string,
+    formData?: FormData
 ) {
     try {
+        const content = String(formData?.get('content') ?? '').trim();
+        if (content) {
+            await addPlanningMessageRequest(projectId, content);
+        }
         await requestPlanningEvaluationRequest(projectId);
     } catch {
         redirect(`/projects/${projectId}/planning?error=evaluate`);
@@ -56,10 +61,12 @@ export async function importProjectPlanAction(
 
 export async function approveProjectPlanAction(
     projectId: string,
-    version: number
+    version: number,
+    formData: FormData
 ) {
+    const repositoryName = String(formData.get('repositoryName') ?? '').trim();
     try {
-        await approveProjectPlanRequest(projectId, version);
+        await approveProjectPlanRequest(projectId, version, repositoryName);
     } catch {
         redirect(`/projects/${projectId}/planning?error=approve`);
     }

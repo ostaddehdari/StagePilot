@@ -33,6 +33,7 @@ export type PlanningWorkspace = {
         request_key: string;
         request_type: string;
         status: string;
+        last_error: string | null;
         created_at: string;
         completed_at: string | null;
     }>;
@@ -145,10 +146,15 @@ export async function importProjectPlanRequest(
 
 export async function approveProjectPlanRequest(
     projectId: string,
-    version: number
+    version: number,
+    repositoryName: string
 ) {
     return requestJson(
         `/projects/${encodeURIComponent(projectId)}/planning/plans/${version}/approve`,
-        { method: 'POST' }
+        {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ repositoryName })
+        }
     );
 }

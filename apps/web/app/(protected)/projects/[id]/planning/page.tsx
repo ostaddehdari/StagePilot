@@ -8,6 +8,7 @@ import {
     importProjectPlanAction,
     requestPlanningEvaluationAction
 } from './actions';
+import { AutoRefresh } from '../../../../../components/auto-refresh';
 
 
 export const dynamic = 'force-dynamic';
@@ -66,6 +67,7 @@ export default async function PlanningPage({ params, searchParams }: PageProps) 
 
     return (
         <div className="stagepilot-page-stack">
+            <AutoRefresh intervalMs={5000} />
             <div className="stagepilot-back-row stagepilot-project-toolbar">
                 <Link href={`/projects/${id}`} className="stagepilot-back-link">← بازگشت به مرکز کنترل پروژه</Link>
                 <span>Planning Studio · {workspace.project.slug}</span>
@@ -117,7 +119,7 @@ export default async function PlanningPage({ params, searchParams }: PageProps) 
                     </div>
 
                     <form action={addPlanningCommentAction.bind(null, id)} className="stagepilot-planning-composer">
-                        <textarea name="content" rows={4} required maxLength={30000} placeholder="نظر، تغییر، محدودیت یا سؤال جدید خود را بنویسید..." />
+                        <textarea name="content" rows={4} required maxLength={30000} autoComplete="off" placeholder="نظر، تغییر، محدودیت یا سؤال جدید خود را بنویسید..." />
                         <div>
                             <button type="submit" className="btn btn-outline-primary">ثبت نظر</button>
                             <button formAction={requestPlanningEvaluationAction.bind(null, id)} formNoValidate type="submit" className="btn stagepilot-primary-button">ارسال چرخهٔ ارزیابی به ChatGPT</button>
@@ -130,7 +132,11 @@ export default async function PlanningPage({ params, searchParams }: PageProps) 
                         <div className="stagepilot-panel-header"><div><div className="stagepilot-panel-eyebrow">PROMPT QUEUE</div><h3>درخواست‌های تحلیل</h3></div></div>
                         <div className="stagepilot-mini-list">
                             {workspace.promptRequests.length === 0 ? <p>هنوز درخواستی ساخته نشده است.</p> : workspace.promptRequests.map(request => (
-                                <div key={request.id}><code>{request.request_key}</code><span className={`stagepilot-state-badge state-${request.status}`}>{request.status}</span></div>
+                                <div key={request.id}>
+                                    <code>{request.request_key}</code>
+                                    <span className={`stagepilot-state-badge state-${request.status}`}>{request.status}</span>
+                                    {request.last_error && <small dir="ltr">{request.last_error}</small>}
+                                </div>
                             ))}
                         </div>
                     </section>
@@ -139,7 +145,7 @@ export default async function PlanningPage({ params, searchParams }: PageProps) 
                         <summary><span>IMPORT JSON</span><strong>ثبت خروجی پروپوزال</strong></summary>
                         <form action={importProjectPlanAction.bind(null, id)}>
                             <p>خروجی `project_plan` دریافت‌شده از ChatGPT را وارد کنید. اعتبار شناسه، وابستگی، معیارها و چرخه‌ها بررسی می‌شود.</p>
-                            <textarea name="rawJson" dir="ltr" rows={12} required placeholder={'{"responseType":"project_plan","plan":{...}}'} />
+                            <textarea name="rawJson" dir="ltr" rows={12} required autoComplete="off" placeholder={'{"responseType":"project_plan","plan":{...}}'} />
                             <button type="submit" className="btn btn-dark w-100">اعتبارسنجی و ثبت نسخه</button>
                         </form>
                     </details>
@@ -179,6 +185,18 @@ export default async function PlanningPage({ params, searchParams }: PageProps) 
                                     </details>
                                     {plan.status !== 'approved' && (
                                         <form action={approveProjectPlanAction.bind(null, id, plan.version)}>
+                                            <label className="stagepilot-plan-repository-field">
+                                                <span>نام پیشنهادی مخزن GitHub</span>
+                                                <input
+                                                    name="repositoryName"
+                                                    dir="ltr"
+                                                    required
+                                                    minLength={1}
+                                                    maxLength={100}
+                                                    autoComplete="off"
+                                                    defaultValue={String(workspace.project.settings?.repositoryName ?? workspace.project.slug)}
+                                                />
+                                            </label>
                                             <button type="submit" className="btn stagepilot-primary-button w-100">تصویب نهایی و ایجاد پروژه</button>
                                         </form>
                                     )}

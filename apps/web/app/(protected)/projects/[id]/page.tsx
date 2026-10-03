@@ -11,6 +11,18 @@ import {
     loadProjectWorkspace
 } from '../../../../lib/projects';
 
+import {
+    loadProjectAutomation
+} from '../../../../lib/automation';
+
+import {
+    controlAutomationAction
+} from './actions';
+
+import {
+    AutoRefresh
+} from '../../../../components/auto-refresh';
+
 
 export const dynamic =
     'force-dynamic';
@@ -76,7 +88,25 @@ function statusLabel(
             'متوقف',
 
         draft:
-            'پیش‌نویس'
+            'پیش‌نویس',
+
+        idle:
+            'آماده',
+
+        queued:
+            'در صف',
+
+        waiting_ai:
+            'منتظر پاسخ AI',
+
+        executing:
+            'اجرای اسکریپت',
+
+        testing:
+            'در حال تست',
+
+        git_sync:
+            'همگام‌سازی Git'
 
     };
 
@@ -132,7 +162,8 @@ export default async function ProjectPage({
 
     const [
         detail,
-        workspace
+        workspace,
+        automation
     ] =
         await Promise.all([
 
@@ -141,6 +172,10 @@ export default async function ProjectPage({
             ),
 
             loadProjectWorkspace(
+                id
+            ),
+
+            loadProjectAutomation(
                 id
             )
 
@@ -168,6 +203,8 @@ export default async function ProjectPage({
     return (
 
         <div>
+
+            <AutoRefresh intervalMs={5000} />
 
             <div
                 className="
@@ -290,6 +327,72 @@ export default async function ProjectPage({
 
                     </span>
 
+                </div>
+
+            </section>
+
+
+            <section className="stagepilot-panel stagepilot-automation-console mt-4">
+
+                <div className="stagepilot-panel-header">
+                    <div>
+                        <div className="stagepilot-panel-eyebrow">AUTONOMOUS PROJECT MANAGER</div>
+                        <h3>مدیر هوشمند اجرای پروژه</h3>
+                    </div>
+                    <span className={`stagepilot-state-badge state-${automation.state?.status ?? 'idle'}`}>
+                        {statusLabel(automation.state?.status ?? 'idle')}
+                    </span>
+                </div>
+
+                <div className="stagepilot-automation-grid">
+                    <div>
+                        <span>Worker</span>
+                        <strong>{automation.worker?.status ?? 'offline'}</strong>
+                        <small>{automation.worker?.worker_version ?? 'هنوز heartbeat ثبت نشده'}</small>
+                    </div>
+                    <div>
+                        <span>چرخه‌های تکمیل‌شده</span>
+                        <strong>{numberFormat(Number(automation.state?.cycle_no ?? 0))}</strong>
+                        <small>هر چرخه: AI → اجرا → تست → Git</small>
+                    </div>
+                    <div>
+                        <span>آخرین Work</span>
+                        <strong>{automation.attempts[0]?.work_key ?? '—'}</strong>
+                        <small>{automation.attempts[0]?.status ?? 'بدون اجرا'}</small>
+                    </div>
+                    <div>
+                        <span>آخرین Commit</span>
+                        <code>{automation.attempts.find(item => item.commit_sha)?.commit_sha?.slice(0, 12) ?? '—'}</code>
+                        <small>پس از تست موفق روی GitHub push می‌شود</small>
+                    </div>
+                </div>
+
+                {automation.state?.last_error && (
+                    <div className="alert alert-danger mt-3 mb-0" dir="ltr">
+                        {automation.state.last_error}
+                    </div>
+                )}
+
+                <div className="stagepilot-automation-actions">
+                    {automation.state?.status === 'paused' ? (
+                        <form action={controlAutomationAction.bind(null, id, 'resume')}>
+                            <button type="submit" className="btn stagepilot-primary-button">ادامهٔ چرخه</button>
+                        </form>
+                    ) : (
+                        <form action={controlAutomationAction.bind(null, id, 'pause')}>
+                            <button type="submit" className="btn btn-outline-warning">توقف امن</button>
+                        </form>
+                    )}
+                    {['blocked', 'failed'].includes(automation.state?.status ?? '') && (
+                        <form action={controlAutomationAction.bind(null, id, 'retry')}>
+                            <button type="submit" className="btn btn-outline-primary">رفع توقف و تلاش دوباره</button>
+                        </form>
+                    )}
+                    {!automation.state && (
+                        <form action={controlAutomationAction.bind(null, id, 'start')}>
+                            <button type="submit" className="btn stagepilot-primary-button">شروع اجرای خودکار</button>
+                        </form>
+                    )}
                 </div>
 
             </section>

@@ -621,6 +621,21 @@ export async function createProject(
             'BEGIN'
         );
 
+        const accountResult =
+            await client.query(
+                `SELECT id
+                 FROM chat_accounts
+                 WHERE deleted_at IS NULL
+                   AND status IN ('ready', 'authenticated')
+                 ORDER BY updated_at DESC
+                 LIMIT 1`
+            );
+
+        const defaultAccountId =
+            accountResult.rows[0]?.id
+            ??
+            null;
+
 
         const projectResult =
             await client.query(
@@ -631,6 +646,7 @@ export async function createProject(
                         description,
                         status,
                         current_plan_revision,
+                        selected_chat_account_id,
                         settings
                     )
                     VALUES (
@@ -639,9 +655,11 @@ export async function createProject(
                         $3,
                         'draft',
                         1,
+                        $4::uuid,
                         jsonb_build_object(
-                            'planningStatus',
-                            'awaiting_planning'
+                            'planningStatus', 'awaiting_planning',
+                            'chatMode', 'new',
+                            'automationMode', 'automatic'
                         )
                     )
                     RETURNING
@@ -657,7 +675,8 @@ export async function createProject(
                 [
                     slug,
                     name,
-                    description || null
+                    description || null,
+                    defaultAccountId
                 ]
             );
 
@@ -695,6 +714,23 @@ export async function createProject(
                 requestText
             ]
         );
+
+        if (defaultAccountId) {
+
+            await client.query(
+                `INSERT INTO conversations (
+                    project_id, chat_account_id, status, sequence_no,
+                    started_reason, metadata
+                 )
+                 VALUES (
+                    $1::uuid, $2::uuid, 'pending_creation', 1,
+                    'automatic_project_creation',
+                    jsonb_build_object('mode', 'new', 'automatic', true)
+                 )`,
+                [project.id, defaultAccountId]
+            );
+
+        }
 
 
         await client.query(

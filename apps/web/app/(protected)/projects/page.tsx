@@ -64,19 +64,19 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
                             <form action={createProjectAction} className="stagepilot-form-grid">
                                 <label>
                                     <span>نام پروژه</span>
-                                    <input name="name" required minLength={2} maxLength={160} placeholder="مثلاً سامانه مدیریت محتوای هوشمند" />
+                                    <input name="name" required minLength={2} maxLength={160} autoComplete="organization" placeholder="مثلاً سامانه مدیریت محتوای هوشمند" />
                                 </label>
                                 <label>
                                     <span>شناسه انگلیسی</span>
-                                    <input name="slug" dir="ltr" pattern="[a-z0-9][a-z0-9-]{2,62}" placeholder="smart-content-platform" />
+                                    <input name="slug" dir="ltr" inputMode="text" autoComplete="off" placeholder="smart-content-platform" />
                                 </label>
                                 <label className="stagepilot-form-wide">
                                     <span>توضیح کوتاه</span>
-                                    <textarea name="description" rows={2} maxLength={5000} placeholder="مسئله و هدف کلی پروژه" />
+                                    <textarea name="description" rows={2} maxLength={5000} autoComplete="off" placeholder="مسئله و هدف کلی پروژه" />
                                 </label>
                                 <label className="stagepilot-form-wide">
                                     <span>ایده و نیازمندی اولیه</span>
-                                    <textarea name="requestText" rows={6} minLength={10} maxLength={30000} required placeholder="ایده، کاربران، محدودیت‌ها و نتیجه‌ای که انتظار دارید..." />
+                                    <textarea name="requestText" rows={6} minLength={10} maxLength={30000} autoComplete="off" required placeholder="ایده، کاربران، محدودیت‌ها و نتیجه‌ای که انتظار دارید..." />
                                 </label>
                                 <div className="stagepilot-form-actions stagepilot-form-wide">
                                     <button type="submit" className="btn stagepilot-primary-button">ثبت و شروع تحلیل ایده</button>
@@ -132,10 +132,10 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
                                                     <details className="stagepilot-row-menu">
                                                         <summary className="btn btn-sm btn-outline-secondary">ویرایش</summary>
                                                         <form action={updateProjectAction.bind(null, project.id)} className="stagepilot-inline-editor">
-                                                            <label>نام<input name="name" defaultValue={project.name} required /></label>
-                                                            <label>شناسه<input name="slug" dir="ltr" defaultValue={project.slug} required /></label>
-                                                            <label>توضیح<textarea name="description" rows={2} defaultValue={project.description ?? ''} /></label>
-                                                            <label>نام مخزن<input name="repositoryName" dir="ltr" defaultValue={repositoryName === '—' ? '' : repositoryName} /></label>
+                                                            <label>نام<input name="name" autoComplete="organization" defaultValue={project.name} required /></label>
+                                                            <label>شناسه<input name="slug" dir="ltr" autoComplete="off" defaultValue={project.slug} required /></label>
+                                                            <label>توضیح<textarea name="description" rows={2} autoComplete="off" defaultValue={project.description ?? ''} /></label>
+                                                            <label>نام مخزن<input name="repositoryName" dir="ltr" autoComplete="off" defaultValue={repositoryName === '—' ? '' : repositoryName} /></label>
                                                             <label>حالت چت<select name="chatMode" defaultValue={String(settings.chatMode ?? 'existing')}><option value="existing">ثبت آدرس چت موجود</option><option value="new">ساخت چت جدید</option></select></label>
                                                             <label>وضعیت<select name="status" defaultValue={project.status}><option value="draft">پیش‌نویس</option><option value="active">فعال</option><option value="paused">متوقف</option><option value="completed">تکمیل‌شده</option></select></label>
                                                             <button className="btn btn-sm btn-primary" type="submit">ذخیره</button>

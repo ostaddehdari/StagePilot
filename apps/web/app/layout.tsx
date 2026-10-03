@@ -1,5 +1,7 @@
 import 'bootstrap/dist/css/bootstrap.rtl.min.css';
 
+import '@fortawesome/fontawesome-free/css/all.min.css';
+
 import './stagepilot.css';
 
 import type { Metadata } from 'next';

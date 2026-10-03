@@ -107,7 +107,7 @@ function validatePromptText(
         ||
         text.length < 1
         ||
-        text.length > 10000
+        text.length > 80000
     ) {
 
         throw new Error(
@@ -1122,13 +1122,12 @@ async function draftPrompt({
 
 
     if (
-        route.routeType
-        !==
-        'new-chat'
+        route.routeType !== 'new-chat'
+        && route.routeType !== 'conversation'
     ) {
 
         throw new Error(
-            `DRAFT_REQUIRES_NEW_CHAT:${page.url()}`
+            `DRAFT_REQUIRES_CHAT_ROUTE:${page.url()}`
         );
 
     }

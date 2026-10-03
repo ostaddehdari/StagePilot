@@ -36,11 +36,11 @@ export default async function SettingsPage({ searchParams }: PageProps) {
                         <span className="stagepilot-secret-badge">Secrets → file 0600</span>
                     </div>
                     <div className="stagepilot-form-grid">
-                        <label><span>مالک مخزن (Owner)</span><input name="githubOwner" dir="ltr" required defaultValue={settings.githubOwner} placeholder="ostaddehdari" /></label>
-                        <label><span>نام کاربری</span><input name="githubUsername" dir="ltr" required defaultValue={settings.githubUsername} placeholder="ostaddehdari" /></label>
-                        <label><span>Fine-grained Personal Access Token</span><input name="githubToken" dir="ltr" type="password" placeholder={settings.tokenConfigured ? 'برای حفظ توکن فعلی خالی بگذارید' : 'github_pat_...'} /></label>
-                        <label><span>رمز عبور حساب (اختیاری)</span><input name="githubPassword" dir="ltr" type="password" placeholder={settings.passwordConfigured ? 'برای حفظ مقدار فعلی خالی بگذارید' : 'ذخیره می‌شود اما GitHub از آن استفاده نمی‌کند'} /></label>
-                        <label><span>نام پیش‌فرض مخزن</span><input name="defaultRepository" dir="ltr" defaultValue={settings.defaultRepository} placeholder="my-project" /></label>
+                        <label><span>مالک مخزن (Owner)</span><input name="githubOwner" dir="ltr" required autoComplete="organization" defaultValue={settings.githubOwner} placeholder="ostaddehdari" /></label>
+                        <label><span>نام کاربری</span><input name="githubUsername" dir="ltr" required autoComplete="username" defaultValue={settings.githubUsername} placeholder="ostaddehdari" /></label>
+                        <label><span>Fine-grained Personal Access Token</span><input name="githubToken" dir="ltr" type="password" autoComplete="new-password" placeholder={settings.tokenConfigured ? 'برای حفظ توکن فعلی خالی بگذارید' : 'github_pat_...'} /></label>
+                        <label><span>رمز عبور حساب (اختیاری)</span><input name="githubPassword" dir="ltr" type="password" autoComplete="new-password" placeholder={settings.passwordConfigured ? 'برای حفظ مقدار فعلی خالی بگذارید' : 'ذخیره می‌شود اما GitHub از آن استفاده نمی‌کند'} /></label>
+                        <label><span>نام پیش‌فرض مخزن</span><input name="defaultRepository" dir="ltr" autoComplete="off" defaultValue={settings.defaultRepository} placeholder="my-project" /></label>
                         <label><span>سطح دسترسی پیش‌فرض</span><select name="defaultVisibility" defaultValue={settings.defaultVisibility}><option value="private">Private</option><option value="public">Public</option></select></label>
                     </div>
                     <div className="stagepilot-security-note">

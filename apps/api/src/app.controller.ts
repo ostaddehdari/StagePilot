@@ -88,6 +88,11 @@ import {
     stopAccountHeadlessRuntime
 } from './browser-login';
 
+import {
+    controlProjectAutomation,
+    getProjectAutomation
+} from './automation';
+
 
 @Controller()
 export class AppController {
@@ -966,17 +971,55 @@ export class AppController {
     async approvePlan(
         @Param('id') id: string,
         @Param('version') version: string,
+        @Body() body: { repositoryName?: unknown },
         @Headers('x-stagepilot-internal-key') internalKey?: string
     ) {
         this.authorizeInternal(internalKey);
         try {
             return {
                 ok: true,
-                result: await approveProjectPlan(id, Number(version))
+                result: await approveProjectPlan(
+                    id,
+                    Number(version),
+                    body?.repositoryName
+                )
             };
         } catch (error) {
             throw new BadRequestException(
                 error instanceof Error ? error.message : 'PROJECT_PLAN_APPROVAL_FAILED'
+            );
+        }
+    }
+
+
+    @Get('projects/:id/automation')
+    async projectAutomation(
+        @Param('id') id: string,
+        @Headers('x-stagepilot-internal-key') internalKey?: string
+    ) {
+        this.authorizeInternal(internalKey);
+        return {
+            ok: true,
+            automation: await getProjectAutomation(id)
+        };
+    }
+
+
+    @Post('projects/:id/automation/control')
+    async controlAutomation(
+        @Param('id') id: string,
+        @Body() body: { action?: unknown },
+        @Headers('x-stagepilot-internal-key') internalKey?: string
+    ) {
+        this.authorizeInternal(internalKey);
+        try {
+            return {
+                ok: true,
+                state: await controlProjectAutomation(id, body?.action)
+            };
+        } catch (error) {
+            throw new BadRequestException(
+                error instanceof Error ? error.message : 'AUTOMATION_CONTROL_FAILED'
             );
         }
     }

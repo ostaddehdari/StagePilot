@@ -869,6 +869,7 @@ export default async function ProjectChatPage({
                                             "
                                             dir="ltr"
                                             required
+                                            autoComplete="url"
                                             placeholder="https://chatgpt.com/c/..."
                                         />
 
@@ -897,6 +898,7 @@ export default async function ProjectChatPage({
                                                 font-monospace
                                             "
                                             dir="ltr"
+                                            autoComplete="off"
                                             placeholder="اختیاری؛ در صورت امکان از URL استخراج می‌شود"
                                         />
 

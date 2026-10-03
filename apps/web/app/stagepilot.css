@@ -55,6 +55,21 @@ body {
 .stagepilot-sidebar {
     transition: width .22s ease, padding .22s ease;
     box-shadow: -14px 0 42px rgba(15, 23, 42, .12);
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.stagepilot-sidebar::-webkit-scrollbar,
+.stagepilot-planning-timeline::-webkit-scrollbar,
+.stagepilot-plan-tree-preview > div::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+}
+
+.stagepilot-planning-timeline,
+.stagepilot-plan-tree-preview > div {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
 }
 
 .stagepilot-sidebar-toggle-input {
@@ -209,6 +224,81 @@ body {
     background: linear-gradient(135deg, #1d4ed8, #4338ca);
     transform: translateY(-1px);
 }
+
+.stagepilot-panel,
+.stagepilot-project-metric {
+    border: 1px solid rgba(148, 163, 184, .22);
+    background:
+        linear-gradient(145deg, rgba(255, 255, 255, .99), rgba(248, 250, 252, .95));
+    box-shadow:
+        0 18px 45px rgba(15, 23, 42, .07),
+        inset 0 1px 0 rgba(255, 255, 255, .9);
+}
+
+.stagepilot-project-metric {
+    position: relative;
+    overflow: hidden;
+}
+
+.stagepilot-project-metric::after {
+    content: '';
+    position: absolute;
+    inset: auto -24px -32px auto;
+    width: 88px;
+    height: 88px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(37, 99, 235, .14), transparent 68%);
+}
+
+.stagepilot-nav-marker i {
+    font-size: 14px;
+}
+
+.stagepilot-nav-item.active .stagepilot-nav-marker {
+    color: #dbeafe;
+    background: linear-gradient(135deg, #2563eb, #7c3aed);
+    box-shadow: 0 8px 22px rgba(37, 99, 235, .32);
+}
+
+.stagepilot-automation-console {
+    position: relative;
+    overflow: hidden;
+    padding: 24px;
+    background:
+        radial-gradient(circle at 5% 0%, rgba(6, 182, 212, .12), transparent 22rem),
+        linear-gradient(145deg, #ffffff, #f8fbff);
+}
+
+.stagepilot-automation-console::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto;
+    height: 4px;
+    background: linear-gradient(90deg, #06b6d4, #2563eb, #7c3aed);
+}
+
+.stagepilot-automation-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 18px;
+}
+
+.stagepilot-automation-grid > div {
+    min-width: 0;
+    display: grid;
+    gap: 5px;
+    padding: 15px;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, .82);
+}
+
+.stagepilot-automation-grid span,
+.stagepilot-automation-grid small { color: #64748b; font-size: 10px; }
+.stagepilot-automation-grid strong { font-size: 15px; }
+.stagepilot-automation-grid code { overflow: hidden; color: #1d4ed8; text-overflow: ellipsis; }
+.stagepilot-automation-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
 
 .stagepilot-create-drawer { position: relative; }
 .stagepilot-create-drawer > summary { list-style: none; white-space: nowrap; }
@@ -415,6 +505,11 @@ body {
 .stagepilot-plan-tree-preview > div { display: grid; gap: 9px; max-height: 240px; overflow: auto; margin-top: 10px; padding: 10px; border-radius: 10px; background: white; }
 .stagepilot-plan-tree-preview section strong { font-size: 10px; }
 .stagepilot-plan-tree-preview ul { margin: 5px 0 0; padding-right: 18px; color: #64748b; font-size: 9px; }
+.stagepilot-plan-card form { display: grid; gap: 10px; }
+.stagepilot-plan-repository-field { display: grid; gap: 6px; }
+.stagepilot-plan-repository-field span { color: #475569; font-size: 10px; font-weight: 800; }
+.stagepilot-plan-repository-field input { width: 100%; padding: 9px 11px; border: 1px solid #cbd5e1; border-radius: 10px; background: white; font: inherit; }
+.stagepilot-plan-repository-field input:focus { border-color: #60a5fa; outline: none; box-shadow: 0 0 0 4px rgba(59, 130, 246, .1); }
 
 .stagepilot-settings-layout { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(280px, .65fr); gap: 22px; align-items: start; }
 .stagepilot-settings-form { display: grid; gap: 20px; }
@@ -441,6 +536,7 @@ body {
     .stagepilot-heading-card,
     .stagepilot-planning-hero { align-items: flex-start; flex-direction: column; }
     .stagepilot-heading-actions { width: 100%; justify-content: space-between; }
+    .stagepilot-automation-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 767px) {
@@ -450,6 +546,7 @@ body {
     .stagepilot-drawer-panel { position: fixed; inset: 75px 12px auto; width: auto; max-height: calc(100vh - 95px); overflow-y: auto; }
     .stagepilot-planning-message { max-width: 95%; }
     .stagepilot-planning-composer div { align-items: stretch; flex-direction: column; }
+    .stagepilot-automation-grid { grid-template-columns: 1fr; }
 }
 
 

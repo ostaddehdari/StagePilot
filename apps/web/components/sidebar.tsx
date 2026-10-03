@@ -17,6 +17,8 @@ type MenuItem = {
 
     marker: string;
 
+    icon: string;
+
     href?: string;
 
 };
@@ -34,6 +36,9 @@ const menu: MenuItem[] = [
         marker:
             '01',
 
+        icon:
+            'fa-solid fa-chart-pie',
+
         href:
             '/'
     },
@@ -47,6 +52,9 @@ const menu: MenuItem[] = [
 
         marker:
             '02',
+
+        icon:
+            'fa-solid fa-diagram-project',
 
         href:
             '/projects'
@@ -62,6 +70,9 @@ const menu: MenuItem[] = [
         marker:
             '03',
 
+        icon:
+            'fa-brands fa-openai',
+
         href:
             '/chat-accounts'
     },
@@ -75,6 +86,9 @@ const menu: MenuItem[] = [
 
         marker:
             '04',
+
+        icon:
+            'fa-solid fa-bolt',
 
         href:
             '/archive'
@@ -90,6 +104,9 @@ const menu: MenuItem[] = [
         marker:
             '05',
 
+        icon:
+            'fa-solid fa-message',
+
         href:
             '/prompts'
     },
@@ -103,6 +120,9 @@ const menu: MenuItem[] = [
 
         marker:
             '06',
+
+        icon:
+            'fa-solid fa-terminal',
 
         href:
             '/logs'
@@ -118,6 +138,9 @@ const menu: MenuItem[] = [
         marker:
             '07',
 
+        icon:
+            'fa-brands fa-github',
+
         href:
             '/git'
     },
@@ -132,6 +155,9 @@ const menu: MenuItem[] = [
         marker:
             '08',
 
+        icon:
+            'fa-solid fa-chart-line',
+
         href:
             '/reports'
     },
@@ -145,6 +171,9 @@ const menu: MenuItem[] = [
 
         marker:
             '09',
+
+        icon:
+            'fa-solid fa-gear',
 
         href:
             '/settings'
@@ -249,9 +278,7 @@ function NavigationItems() {
                                 "
                             >
 
-                                {
-                                    item.marker
-                                }
+                                <i className={item.icon} aria-hidden="true" />
 
                             </div>
 

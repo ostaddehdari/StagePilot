@@ -17,6 +17,10 @@ import {
     updateProjectRequest
 } from '../../../lib/projects';
 
+import {
+    requestPlanningEvaluationRequest
+} from '../../../lib/planning';
+
 
 export async function createProjectAction(
     formData: FormData
@@ -91,8 +95,27 @@ export async function createProjectAction(
     );
 
 
+    let planningQueued = false;
+
+
+    try {
+
+        await requestPlanningEvaluationRequest(
+            String(projectId)
+        );
+
+
+        planningQueued = true;
+
+    } catch {
+
+        planningQueued = false;
+
+    }
+
+
     redirect(
-        `/projects/${projectId}`
+        `/projects/${projectId}/planning?${planningQueued ? 'success=created-and-queued' : 'error=chat-account-required'}`
     );
 
 }

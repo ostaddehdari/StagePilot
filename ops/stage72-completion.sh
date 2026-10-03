@@ -6,6 +6,7 @@ PROJECT_ROOT="${STAGEPILOT_PROJECT_ROOT:-/opt/stagepilot}"
 TARGET_REF="${STAGEPILOT_TARGET_REF:-main}"
 SKIP_GIT_FETCH="${STAGEPILOT_SKIP_GIT_FETCH:-0}"
 ENV_FILE="${STAGEPILOT_ENV_FILE:-$PROJECT_ROOT/runtime/internal.env}"
+DB_ENV_FILE="${STAGEPILOT_DB_ENV_FILE:-$PROJECT_ROOT/runtime/db.env}"
 REPORT_ROOT="${STAGEPILOT_REPORT_ROOT:-$PROJECT_ROOT/runtime/acceptance}"
 TIMESTAMP="$(date -u +%Y%m%d-%H%M%S)"
 REPORT_FILE="$REPORT_ROOT/stage72-$TIMESTAMP.log"
@@ -46,6 +47,7 @@ done
 
 [[ -d "$PROJECT_ROOT/.git" ]] || fail "project repository not found"
 [[ -f "$ENV_FILE" ]] || fail "environment file not found: $ENV_FILE"
+[[ -f "$DB_ENV_FILE" ]] || fail "database environment file not found: $DB_ENV_FILE"
 
 cd "$PROJECT_ROOT"
 
@@ -71,7 +73,8 @@ printf 'Deploy SHA: %s\n' "$DEPLOY_SHA"
 
 cp package-lock.json "$BACKUP_ROOT/package-lock.json"
 cp "$ENV_FILE" "$BACKUP_ROOT/internal.env.backup"
-chmod 600 "$BACKUP_ROOT/internal.env.backup"
+cp "$DB_ENV_FILE" "$BACKUP_ROOT/db.env.backup"
+chmod 600 "$BACKUP_ROOT/internal.env.backup" "$BACKUP_ROOT/db.env.backup"
 
 ss -ltnp > "$BACKUP_ROOT/listening-ports.txt"
 df -h > "$BACKUP_ROOT/disk-usage.txt"
@@ -86,6 +89,7 @@ else
 fi
 
 set -a
+. "$DB_ENV_FILE"
 . "$ENV_FILE"
 set +a
 

@@ -36,6 +36,7 @@ coverage/
 # Runtime and persistent private state
 runtime/
 storage/
+backups/
 .cache/
 tmp/
 temp/

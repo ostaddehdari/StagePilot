@@ -21,6 +21,23 @@ export type CreateProjectInput = {
 };
 
 
+export type UpdateProjectInput = {
+
+    name?: unknown;
+
+    slug?: unknown;
+
+    description?: unknown;
+
+    status?: unknown;
+
+    repositoryName?: unknown;
+
+    chatMode?: unknown;
+
+};
+
+
 function textValue(
     value: unknown
 ): string {
@@ -154,6 +171,7 @@ export async function listProjects() {
                 p.name,
                 p.description,
                 p.status,
+                p.settings,
                 p.current_plan_revision,
                 p.created_at,
                 p.updated_at,
@@ -218,6 +236,9 @@ export async function listProjects() {
             LEFT JOIN works w
                 ON
                     w.stage_id = s.id
+
+            WHERE
+                p.deleted_at IS NULL
 
             GROUP BY
                 p.id
@@ -319,6 +340,8 @@ export async function getProject(
 
                 WHERE
                     p.id = $1::uuid
+                    AND
+                    p.deleted_at IS NULL
 
                 GROUP BY
                     p.id
@@ -383,6 +406,135 @@ export async function getProject(
 
     };
 
+}
+
+
+export async function updateProject(
+    id: string,
+    input: UpdateProjectInput
+) {
+
+    const name = textValue(input.name);
+    const slug = validateSlug(textValue(input.slug));
+    const description = textValue(input.description);
+    const status = textValue(input.status) || 'draft';
+    const repositoryName = textValue(input.repositoryName);
+    const chatMode = textValue(input.chatMode) || 'existing';
+
+    if (name.length < 2 || name.length > 160) {
+        throw new Error('INVALID_PROJECT_NAME');
+    }
+
+    if (description.length > 5000) {
+        throw new Error('PROJECT_DESCRIPTION_TOO_LONG');
+    }
+
+    if (!['draft', 'active', 'paused', 'completed'].includes(status)) {
+        throw new Error('INVALID_PROJECT_STATUS');
+    }
+
+    if (
+        repositoryName
+        &&
+        !/^[A-Za-z0-9._-]{1,100}$/.test(repositoryName)
+    ) {
+        throw new Error('INVALID_REPOSITORY_NAME');
+    }
+
+    if (!['existing', 'new'].includes(chatMode)) {
+        throw new Error('INVALID_CHAT_MODE');
+    }
+
+    const db = getDatabasePool();
+    const result = await db.query(
+        `UPDATE projects
+         SET name = $2,
+             slug = $3,
+             description = NULLIF($4, ''),
+             status = $5,
+             settings = settings || jsonb_build_object(
+                'repositoryName', $6::text,
+                'chatMode', $7::text
+             ),
+             updated_at = now()
+         WHERE id = $1::uuid
+           AND deleted_at IS NULL
+         RETURNING id, slug, name, description, status,
+                   current_plan_revision, settings, created_at, updated_at`,
+        [
+            id,
+            name,
+            slug,
+            description,
+            status,
+            repositoryName,
+            chatMode
+        ]
+    );
+
+    if (result.rowCount !== 1) {
+        throw new Error('PROJECT_NOT_FOUND');
+    }
+
+    await db.query(
+        `INSERT INTO events (
+            project_id, entity_type, entity_id, event_type, severity,
+            actor_type, actor_id, message, data
+         )
+         VALUES (
+            $1::uuid, 'project', $1::text, 'project.updated', 'info',
+            'user', 'private-admin', 'Project settings updated.',
+            jsonb_build_object(
+                'repositoryName', $2::text,
+                'chatMode', $3::text
+            )
+         )`,
+        [id, repositoryName, chatMode]
+    );
+
+    return normalizeProject(result.rows[0]);
+}
+
+
+export async function deleteProject(
+    id: string
+) {
+
+    const db = getDatabasePool();
+    const result = await db.query(
+        `UPDATE projects
+         SET deleted_at = now(),
+             status = 'paused',
+             updated_at = now(),
+             settings = settings || jsonb_build_object(
+                'deletedBy', 'private-admin',
+                'deletedAt', now()
+             )
+         WHERE id = $1::uuid
+           AND deleted_at IS NULL
+         RETURNING id, slug, name, deleted_at`,
+        [id]
+    );
+
+    if (result.rowCount !== 1) {
+        throw new Error('PROJECT_NOT_FOUND');
+    }
+
+    await db.query(
+        `INSERT INTO events (
+            project_id, entity_type, entity_id, event_type, severity,
+            actor_type, actor_id, message, data
+         )
+         VALUES (
+            $1::uuid, 'project', $1::text, 'project.deleted', 'warning',
+            'user', 'private-admin',
+            'Project soft-deleted; evidence and history retained.',
+            jsonb_build_object('recoverable', true)
+         )`,
+        [id]
+    );
+
+    return result.rows[0];
 }
 
 
@@ -536,6 +688,35 @@ export async function createProject(
                         jsonb_build_array()
                     ),
                     false
+                )
+            `,
+            [
+                project.id,
+                requestText
+            ]
+        );
+
+
+        await client.query(
+            `
+                INSERT INTO project_planning_messages (
+                    project_id,
+                    revision,
+                    role,
+                    message_type,
+                    content,
+                    payload
+                )
+                VALUES (
+                    $1::uuid,
+                    1,
+                    'user',
+                    'idea',
+                    $2,
+                    jsonb_build_object(
+                        'source',
+                        'project_creation'
+                    )
                 )
             `,
             [

@@ -15,6 +15,40 @@ export const runtime =
     'nodejs';
 
 
+type Attempt = {
+    count: number;
+    resetAt: number;
+};
+
+
+const loginAttempts = new Map<string, Attempt>();
+
+
+function requestKey(
+    request: NextRequest,
+    username: string
+) {
+    const forwarded = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
+    const real = request.headers.get('x-real-ip')?.trim();
+    return `${forwarded || real || 'unknown'}:${username.toLowerCase()}`;
+}
+
+
+function sameOrigin(
+    request: NextRequest
+) {
+    const origin = request.headers.get('origin');
+    if (!origin) {
+        return false;
+    }
+    try {
+        return new URL(origin).origin === new URL(publicOrigin()).origin;
+    } catch {
+        return false;
+    }
+}
+
+
 function publicOrigin(): string {
 
     const origin =
@@ -79,6 +113,10 @@ export async function POST(
     request: NextRequest
 ) {
 
+    if (!sameOrigin(request)) {
+        return NextResponse.redirect(loginUrl('csrf'), 303);
+    }
+
     const form =
         await request.formData();
 
@@ -111,12 +149,31 @@ export async function POST(
     }
 
 
+    const key = requestKey(request, username);
+    const now = Date.now();
+    const current = loginAttempts.get(key);
+
+    if (current && current.resetAt > now && current.count >= 5) {
+        return NextResponse.redirect(loginUrl('rate-limit'), 303);
+    }
+
+    if (current && current.resetAt <= now) {
+        loginAttempts.delete(key);
+    }
+
+
     if (
         !verifyAdminCredentials(
             username,
             password
         )
     ) {
+
+        const attempt = loginAttempts.get(key);
+        loginAttempts.set(key, {
+            count: (attempt?.count ?? 0) + 1,
+            resetAt: attempt?.resetAt ?? now + (15 * 60 * 1000)
+        });
 
         return NextResponse.redirect(
             loginUrl(
@@ -126,6 +183,9 @@ export async function POST(
         );
 
     }
+
+
+    loginAttempts.delete(key);
 
 
     const response =

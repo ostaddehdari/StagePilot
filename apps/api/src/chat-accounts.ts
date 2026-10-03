@@ -31,6 +31,15 @@ export type CreateChatAccountInput = {
 };
 
 
+export type UpdateChatAccountInput = {
+
+    label?: unknown;
+
+    note?: unknown;
+
+};
+
+
 function textValue(
     value: unknown
 ): string {
@@ -154,6 +163,9 @@ export async function listChatAccounts() {
 
             FROM chat_accounts a
 
+            WHERE
+                a.deleted_at IS NULL
+
             ORDER BY
                 a.created_at DESC
         `);
@@ -204,6 +216,8 @@ export async function getChatAccount(
 
                 WHERE
                     a.id = $1::uuid
+                    AND
+                    a.deleted_at IS NULL
             `,
             [
                 id
@@ -295,6 +309,116 @@ export async function getChatAccount(
 
     };
 
+}
+
+
+export async function updateChatAccount(
+    id: string,
+    input: UpdateChatAccountInput
+) {
+
+    const label = textValue(input.label);
+    const note = textValue(input.note);
+
+    if (label.length < 2 || label.length > 120) {
+        throw new Error('INVALID_CHAT_ACCOUNT_LABEL');
+    }
+
+    if (note.length > 2000) {
+        throw new Error('CHAT_ACCOUNT_NOTE_TOO_LONG');
+    }
+
+    const db = getDatabasePool();
+    const result = await db.query(
+        `UPDATE chat_accounts
+         SET label = $2,
+             metadata = metadata || jsonb_build_object('note', $3::text),
+             updated_at = now()
+         WHERE id = $1::uuid
+           AND deleted_at IS NULL
+         RETURNING id, label, profile_key, status, metadata, created_at, updated_at`,
+        [id, label, note]
+    );
+
+    if (result.rowCount !== 1) {
+        throw new Error('CHAT_ACCOUNT_NOT_FOUND');
+    }
+
+    return result.rows[0];
+}
+
+
+export async function deleteChatAccount(
+    id: string
+) {
+
+    const db = getDatabasePool();
+    const client = await db.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        const activeResult = await client.query(
+            `SELECT COUNT(*)::int AS count
+             FROM conversations
+             WHERE chat_account_id = $1::uuid
+               AND status IN ('active', 'pending_creation')`,
+            [id]
+        );
+
+        if (Number(activeResult.rows[0].count) > 0) {
+            throw new Error('CHAT_ACCOUNT_HAS_ACTIVE_CONVERSATION');
+        }
+
+        await client.query(
+            `UPDATE projects
+             SET selected_chat_account_id = NULL,
+                 updated_at = now()
+             WHERE selected_chat_account_id = $1::uuid`,
+            [id]
+        );
+
+        const result = await client.query(
+            `UPDATE chat_accounts
+             SET deleted_at = now(),
+                 status = 'disabled',
+                 updated_at = now(),
+                 metadata = metadata || jsonb_build_object(
+                    'deletedBy', 'private-admin',
+                    'profileRetained', true
+                 )
+             WHERE id = $1::uuid
+               AND deleted_at IS NULL
+             RETURNING id, label, profile_key, deleted_at`,
+            [id]
+        );
+
+        if (result.rowCount !== 1) {
+            throw new Error('CHAT_ACCOUNT_NOT_FOUND');
+        }
+
+        await client.query(
+            `INSERT INTO events (
+                entity_type, entity_id, event_type, severity,
+                actor_type, actor_id, message, data
+             )
+             VALUES (
+                'chat_account', $1::text, 'chat_account.deleted', 'warning',
+                'user', 'private-admin',
+                'ChatGPT account disabled; browser profile retained for recovery.',
+                jsonb_build_object('profileRetained', true)
+             )`,
+            [id]
+        );
+
+        await client.query('COMMIT');
+        return result.rows[0];
+    } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+    } finally {
+        client.release();
+    }
 }
 
 

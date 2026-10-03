@@ -37,8 +37,23 @@ function publicOrigin(): string {
 
 
 export async function POST(
-    _request: NextRequest
+    request: NextRequest
 ) {
+
+    const origin = request.headers.get('origin');
+    let validOrigin = false;
+    try {
+        validOrigin = Boolean(origin) && new URL(origin as string).origin === new URL(publicOrigin()).origin;
+    } catch {
+        validOrigin = false;
+    }
+
+    if (!validOrigin) {
+        return NextResponse.json(
+            { error: 'CSRF_ORIGIN_MISMATCH' },
+            { status: 403 }
+        );
+    }
 
     const response =
         NextResponse.redirect(

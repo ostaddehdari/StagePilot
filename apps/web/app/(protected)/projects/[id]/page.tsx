@@ -204,7 +204,17 @@ export default async function ProjectPage({
                     "
                 >
 
-                    مدیریت ChatGPT پروژه
+                    تنظیمات ChatGPT پروژه
+
+                </Link>
+
+
+                <Link
+                    href={`/projects/${id}/planning`}
+                    className="btn btn-sm btn-primary"
+                >
+
+                    تحلیل ایده و پروپوزال
 
                 </Link>
 

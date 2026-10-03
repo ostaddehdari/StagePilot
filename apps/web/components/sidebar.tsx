@@ -88,7 +88,10 @@ const menu: MenuItem[] = [
             'Templates / Requests',
 
         marker:
-            '05'
+            '05',
+
+        href:
+            '/prompts'
     },
 
     {
@@ -99,7 +102,10 @@ const menu: MenuItem[] = [
             'Server / Worker / Tests',
 
         marker:
-            '06'
+            '06',
+
+        href:
+            '/logs'
     },
 
     {
@@ -110,7 +116,10 @@ const menu: MenuItem[] = [
             'Repositories / Commits',
 
         marker:
-            '07'
+            '07',
+
+        href:
+            '/git'
     },
 
     {
@@ -121,7 +130,10 @@ const menu: MenuItem[] = [
             'Progress / Events',
 
         marker:
-            '08'
+            '08',
+
+        href:
+            '/reports'
     },
 
     {
@@ -132,7 +144,10 @@ const menu: MenuItem[] = [
             'System configuration',
 
         marker:
-            '09'
+            '09',
+
+        href:
+            '/settings'
     }
 
 ];
@@ -342,6 +357,12 @@ export function Sidebar() {
 
         <>
 
+            <input
+                id="stagepilot-sidebar-toggle"
+                type="checkbox"
+                className="stagepilot-sidebar-toggle-input"
+            />
+
             <aside
                 className="
                     stagepilot-sidebar
@@ -349,6 +370,14 @@ export function Sidebar() {
                     d-xl-flex
                 "
             >
+
+                <label
+                    htmlFor="stagepilot-sidebar-toggle"
+                    className="stagepilot-sidebar-toggle"
+                    title="جمع یا باز کردن سایدبار"
+                >
+                    ⇄
+                </label>
 
                 <div>
 
@@ -423,7 +452,7 @@ export function Sidebar() {
                             "
                         >
 
-                            Foundation Online
+                            Control Plane Online
 
                         </div>
 
@@ -435,7 +464,7 @@ export function Sidebar() {
                             "
                         >
 
-                            Stage 2 active
+                            Through Stage 7.2
 
                         </div>
 

@@ -2,6 +2,7 @@ import {
     BadRequestException,
     Body,
     Controller,
+    Delete,
     Get,
     Headers,
     NotFoundException,
@@ -21,8 +22,11 @@ import {
 import {
     CreateProjectInput,
     createProject,
+    deleteProject,
     getProject,
-    listProjects
+    listProjects,
+    UpdateProjectInput,
+    updateProject
 } from './projects';
 
 
@@ -34,9 +38,27 @@ import {
 import {
     CreateChatAccountInput,
     createChatAccount,
+    deleteChatAccount,
     getChatAccount,
-    listChatAccounts
+    listChatAccounts,
+    UpdateChatAccountInput,
+    updateChatAccount
 } from './chat-accounts';
+
+
+import {
+    addPlanningMessage,
+    approveProjectPlan,
+    getPlanningWorkspace,
+    requestPlanningEvaluation,
+    saveProjectPlan
+} from './planning';
+
+
+import {
+    getSiteSettings,
+    updateSiteSettings
+} from './site-settings';
 
 
 import {
@@ -108,10 +130,13 @@ export class AppController {
                 'stagepilot-api',
 
             stage:
-                'S02',
+                'S07',
 
             work:
-                'W05'
+                'W02',
+
+            completionPackage:
+                'stage72'
 
         };
 
@@ -703,6 +728,45 @@ export class AppController {
     }
 
 
+    @Patch('chat-accounts/:id')
+    async updateChatAccountRecord(
+        @Param('id') id: string,
+        @Body() body: UpdateChatAccountInput,
+        @Headers('x-stagepilot-internal-key') internalKey?: string
+    ) {
+        this.authorizeInternal(internalKey);
+        try {
+            return {
+                ok: true,
+                account: await updateChatAccount(id, body ?? {})
+            };
+        } catch (error) {
+            throw new BadRequestException(
+                error instanceof Error ? error.message : 'CHAT_ACCOUNT_UPDATE_FAILED'
+            );
+        }
+    }
+
+
+    @Delete('chat-accounts/:id')
+    async deleteChatAccountRecord(
+        @Param('id') id: string,
+        @Headers('x-stagepilot-internal-key') internalKey?: string
+    ) {
+        this.authorizeInternal(internalKey);
+        try {
+            return {
+                ok: true,
+                account: await deleteChatAccount(id)
+            };
+        } catch (error) {
+            throw new BadRequestException(
+                error instanceof Error ? error.message : 'CHAT_ACCOUNT_DELETE_FAILED'
+            );
+        }
+    }
+
+
     @Get('projects')
     async projects(
         @Headers(
@@ -774,6 +838,185 @@ export class AppController {
 
         }
 
+    }
+
+
+    @Patch('projects/:id')
+    async updateProjectRecord(
+        @Param('id') id: string,
+        @Body() body: UpdateProjectInput,
+        @Headers('x-stagepilot-internal-key') internalKey?: string
+    ) {
+        this.authorizeInternal(internalKey);
+        try {
+            return {
+                ok: true,
+                project: await updateProject(id, body ?? {})
+            };
+        } catch (error) {
+            throw new BadRequestException(
+                error instanceof Error ? error.message : 'PROJECT_UPDATE_FAILED'
+            );
+        }
+    }
+
+
+    @Delete('projects/:id')
+    async deleteProjectRecord(
+        @Param('id') id: string,
+        @Headers('x-stagepilot-internal-key') internalKey?: string
+    ) {
+        this.authorizeInternal(internalKey);
+        try {
+            return {
+                ok: true,
+                project: await deleteProject(id)
+            };
+        } catch (error) {
+            throw new BadRequestException(
+                error instanceof Error ? error.message : 'PROJECT_DELETE_FAILED'
+            );
+        }
+    }
+
+
+    @Get('projects/:id/planning')
+    async planningWorkspace(
+        @Param('id') id: string,
+        @Headers('x-stagepilot-internal-key') internalKey?: string
+    ) {
+        this.authorizeInternal(internalKey);
+        const planning = await getPlanningWorkspace(id);
+        if (!planning) {
+            throw new NotFoundException('Project not found');
+        }
+        return { ok: true, planning };
+    }
+
+
+    @Post('projects/:id/planning/messages')
+    async planningMessage(
+        @Param('id') id: string,
+        @Body() body: {
+            role?: unknown;
+            messageType?: unknown;
+            content?: unknown;
+        },
+        @Headers('x-stagepilot-internal-key') internalKey?: string
+    ) {
+        this.authorizeInternal(internalKey);
+        try {
+            return {
+                ok: true,
+                message: await addPlanningMessage(id, body ?? {})
+            };
+        } catch (error) {
+            throw new BadRequestException(
+                error instanceof Error ? error.message : 'PLANNING_MESSAGE_FAILED'
+            );
+        }
+    }
+
+
+    @Post('projects/:id/planning/evaluate')
+    async evaluateProject(
+        @Param('id') id: string,
+        @Headers('x-stagepilot-internal-key') internalKey?: string
+    ) {
+        this.authorizeInternal(internalKey);
+        try {
+            return {
+                ok: true,
+                promptRequest: await requestPlanningEvaluation(id)
+            };
+        } catch (error) {
+            throw new BadRequestException(
+                error instanceof Error ? error.message : 'PLANNING_EVALUATION_FAILED'
+            );
+        }
+    }
+
+
+    @Post('projects/:id/planning/plans')
+    async savePlan(
+        @Param('id') id: string,
+        @Body() body: {
+            plan?: unknown;
+            rawJson?: unknown;
+            createdBy?: unknown;
+            summary?: unknown;
+        },
+        @Headers('x-stagepilot-internal-key') internalKey?: string
+    ) {
+        this.authorizeInternal(internalKey);
+        try {
+            return {
+                ok: true,
+                plan: await saveProjectPlan(id, body ?? {})
+            };
+        } catch (error) {
+            throw new BadRequestException(
+                error instanceof Error ? error.message : 'PROJECT_PLAN_SAVE_FAILED'
+            );
+        }
+    }
+
+
+    @Post('projects/:id/planning/plans/:version/approve')
+    async approvePlan(
+        @Param('id') id: string,
+        @Param('version') version: string,
+        @Headers('x-stagepilot-internal-key') internalKey?: string
+    ) {
+        this.authorizeInternal(internalKey);
+        try {
+            return {
+                ok: true,
+                result: await approveProjectPlan(id, Number(version))
+            };
+        } catch (error) {
+            throw new BadRequestException(
+                error instanceof Error ? error.message : 'PROJECT_PLAN_APPROVAL_FAILED'
+            );
+        }
+    }
+
+
+    @Get('settings')
+    async settings(
+        @Headers('x-stagepilot-internal-key') internalKey?: string
+    ) {
+        this.authorizeInternal(internalKey);
+        return {
+            ok: true,
+            settings: await getSiteSettings()
+        };
+    }
+
+
+    @Patch('settings')
+    async saveSettings(
+        @Body() body: {
+            githubOwner?: unknown;
+            githubUsername?: unknown;
+            githubToken?: unknown;
+            githubPassword?: unknown;
+            defaultRepository?: unknown;
+            defaultVisibility?: unknown;
+        },
+        @Headers('x-stagepilot-internal-key') internalKey?: string
+    ) {
+        this.authorizeInternal(internalKey);
+        try {
+            return {
+                ok: true,
+                settings: await updateSiteSettings(body ?? {})
+            };
+        } catch (error) {
+            throw new BadRequestException(
+                error instanceof Error ? error.message : 'SETTINGS_UPDATE_FAILED'
+            );
+        }
     }
 
 

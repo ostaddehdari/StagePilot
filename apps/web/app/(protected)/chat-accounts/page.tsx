@@ -1,655 +1,130 @@
 import Link from 'next/link';
 
-
 import {
-    createChatAccountAction
+    createChatAccountAction,
+    deleteChatAccountAction,
+    updateChatAccountAction
 } from './actions';
 
-
-import {
-    loadChatAccounts
-} from '../../../lib/chat-accounts';
+import { loadChatAccounts } from '../../../lib/chat-accounts';
+import type { ChatAccountListItem } from '../../../lib/chat-accounts';
 
 
-import type {
-    ChatAccountListItem
-} from '../../../lib/chat-accounts';
-
-
-export const dynamic =
-    'force-dynamic';
-
+export const dynamic = 'force-dynamic';
 
 type PageProps = {
-
-    searchParams: Promise<{
-
-        error?: string;
-
-    }>;
-
+    searchParams: Promise<{ error?: string; success?: string }>;
 };
 
-
-function statusLabel(
-    status?: string | null
-) {
-
-    const labels:
-        Record<string, string> = {
-
-        needs_login:
-            'نیازمند ورود',
-
-        ready:
-            'آماده',
-
-        busy:
-            'مشغول',
-
-        expired:
-            'ورود منقضی',
-
-        error:
-            'خطا',
-
-        stopped:
-            'متوقف',
-
-        unknown:
-            'نامشخص'
-
-    };
-
-
-    if (!status) {
-
-        return 'نامشخص';
-
-    }
-
-
-    return labels[status]
-        ??
-        status;
-
+function statusLabel(status?: string | null) {
+    if (!status) return 'نامشخص';
+    return ({
+        needs_login: 'نیازمند ورود',
+        ready: 'آماده',
+        busy: 'مشغول',
+        expired: 'ورود منقضی',
+        error: 'خطا',
+        stopped: 'متوقف',
+        unknown: 'نامشخص'
+    } as Record<string, string>)[status] ?? status;
 }
 
-
-function numberFormat(
-    value: number
-) {
-
-    return new Intl.NumberFormat(
-        'fa-IR'
-    ).format(
-        value
-    );
-
+function numberFormat(value: number) {
+    return new Intl.NumberFormat('fa-IR').format(value);
 }
 
-
-export default async function ChatAccountsPage({
-
-    searchParams
-
-}: PageProps) {
-
-    const params =
-        await searchParams;
-
-
+export default async function ChatAccountsPage({ searchParams }: PageProps) {
+    const params = await searchParams;
     let accounts: ChatAccountListItem[] = [];
-
-
     let apiError = false;
-
-
     try {
-
-        accounts =
-            await loadChatAccounts();
-
+        accounts = await loadChatAccounts();
     } catch {
-
-        apiError =
-            true;
-
+        apiError = true;
     }
-
 
     return (
-
-        <div>
-
-            <section
-                className="
-                    stagepilot-section-heading
-                "
-            >
-
+        <div className="stagepilot-page-stack">
+            <section className="stagepilot-section-heading stagepilot-heading-card">
                 <div>
-
-                    <div
-                        className="
-                            stagepilot-panel-eyebrow
-                        "
-                    >
-
-                        ChatGPT Accounts
-
-                    </div>
-
-
-                    <h2>
-
-                        حساب‌های ChatGPT
-
-                    </h2>
-
-
+                    <div className="stagepilot-panel-eyebrow">CHATGPT ACCOUNTS</div>
+                    <h2>حساب‌های ChatGPT</h2>
                     <p>
-
-                        برای هر حساب یک Profile
-                        مستقل مرورگر نگهداری می‌شود.
-                        noVNC فقط هنگام ورود یا
-                        ورود مجدد فعال خواهد شد و
-                        اجرای عادی حساب Headless
-                        خواهد بود.
-
+                        هر حساب Profile مرورگر مستقل دارد؛ noVNC فقط برای ورود و اجرای عادی
+                        به‌صورت Headless انجام می‌شود.
                     </p>
-
                 </div>
-
-
-                <div
-                    className="
-                        stagepilot-section-count
-                    "
-                >
-
-                    {
-                        numberFormat(
-                            accounts.length
-                        )
-                    }
-
-                    <span>
-                        حساب
-                    </span>
-
+                <div className="stagepilot-heading-actions">
+                    <div className="stagepilot-section-count">{numberFormat(accounts.length)}<span>حساب</span></div>
+                    <details className="stagepilot-create-drawer">
+                        <summary className="btn stagepilot-primary-button">＋ حساب جدید</summary>
+                        <div className="stagepilot-drawer-panel stagepilot-drawer-small">
+                            <div className="stagepilot-drawer-heading"><div><span>NEW ACCOUNT</span><h3>ساخت Profile مستقل</h3></div></div>
+                            <form action={createChatAccountAction} className="stagepilot-form-grid">
+                                <label className="stagepilot-form-wide"><span>نام حساب</span><input name="label" required minLength={2} maxLength={120} placeholder="مثلاً حساب اصلی Pro" /></label>
+                                <label className="stagepilot-form-wide"><span>یادداشت</span><textarea name="note" rows={3} maxLength={2000} placeholder="کاربرد این حساب و پروژه‌های مرتبط" /></label>
+                                <button type="submit" className="btn stagepilot-primary-button stagepilot-form-wide">ساخت Profile</button>
+                            </form>
+                        </div>
+                    </details>
                 </div>
-
             </section>
 
-
-            {
-                params.error
-                ===
-                'create'
-                &&
-                (
-
-                    <div
-                        className="
-                            alert
-                            alert-danger
-                            mt-4
-                        "
-                    >
-
-                        ایجاد حساب انجام نشد.
-                        نام حساب را بررسی کن.
-
-                    </div>
-
-                )
-            }
-
-
-            {
-                apiError
-                &&
-                (
-
-                    <div
-                        className="
-                            alert
-                            alert-warning
-                            mt-4
-                        "
-                    >
-
-                        API حساب‌های ChatGPT
-                        در دسترس نیست.
-
-                    </div>
-
-                )
-            }
-
-
-            <section
-                className="
-                    row
-                    g-4
-                    mt-1
-                "
-            >
-
-                <div
-                    className="
-                        col-12
-                        col-xxl-4
-                    "
-                >
-
-                    <div
-                        className="
-                            stagepilot-panel
-                        "
-                    >
-
-                        <div
-                            className="
-                                stagepilot-panel-header
-                            "
-                        >
-
-                            <div>
-
-                                <div
-                                    className="
-                                        stagepilot-panel-eyebrow
-                                    "
-                                >
-
-                                    New Account
-
-                                </div>
-
-
-                                <h3>
-
-                                    افزودن حساب
-
-                                </h3>
-
-                            </div>
-
-                        </div>
-
-
-                        <form
-                            action={
-                                createChatAccountAction
-                            }
-                            className="
-                                stagepilot-form
-                            "
-                        >
-
-                            <div>
-
-                                <label
-                                    htmlFor="label"
-                                    className="
-                                        form-label
-                                    "
-                                >
-
-                                    نام دلخواه حساب
-
-                                </label>
-
-
-                                <input
-                                    id="label"
-                                    name="label"
-                                    className="
-                                        form-control
-                                    "
-                                    required
-                                    minLength={2}
-                                    maxLength={120}
-                                    placeholder="مثلاً حساب اصلی Pro"
-                                />
-
-                            </div>
-
-
-                            <div>
-
-                                <label
-                                    htmlFor="note"
-                                    className="
-                                        form-label
-                                    "
-                                >
-
-                                    یادداشت
-
-                                </label>
-
-
-                                <textarea
-                                    id="note"
-                                    name="note"
-                                    className="
-                                        form-control
-                                    "
-                                    rows={4}
-                                    maxLength={2000}
-                                    placeholder="مثلاً مخصوص پروژه‌های اصلی"
-                                />
-
-                            </div>
-
-
-                            <div
-                                className="
-                                    stagepilot-account-policy
-                                "
-                            >
-
-                                <strong>
-
-                                    سیاست مرورگر
-
-                                </strong>
-
-
-                                <span>
-
-                                    Login: noVNC
-
-                                </span>
-
-
-                                <span>
-
-                                    Normal: Headless
-
-                                </span>
-
-
-                                <small>
-
-                                    رمز عبور یا OTP در
-                                    StagePilot ذخیره
-                                    نمی‌شود.
-
-                                </small>
-
-                            </div>
-
-
-                            <button
-                                type="submit"
-                                className="
-                                    btn
-                                    btn-dark
-                                    stagepilot-primary-button
-                                "
-                            >
-
-                                ساخت Profile حساب
-
-                            </button>
-
-                        </form>
-
-                    </div>
-
+            {params.success && <div className="alert alert-success">عملیات حساب با موفقیت انجام شد.</div>}
+            {params.error && <div className="alert alert-danger">عملیات حساب انجام نشد؛ حساب‌های فعال در چت قابل حذف نیستند.</div>}
+            {apiError && <div className="alert alert-warning">API حساب‌های ChatGPT در دسترس نیست.</div>}
+
+            <section className="stagepilot-panel stagepilot-table-panel">
+                <div className="stagepilot-panel-header">
+                    <div><div className="stagepilot-panel-eyebrow">BROWSER PROFILES</div><h3>همهٔ حساب‌ها</h3></div>
+                    <span className="stagepilot-live-pill">Profileهای ایزوله</span>
                 </div>
-
-
-                <div
-                    className="
-                        col-12
-                        col-xxl-8
-                    "
-                >
-
-                    <div
-                        className="
-                            stagepilot-panel
-                            h-100
-                        "
-                    >
-
-                        <div
-                            className="
-                                stagepilot-panel-header
-                            "
-                        >
-
-                            <div>
-
-                                <div
-                                    className="
-                                        stagepilot-panel-eyebrow
-                                    "
-                                >
-
-                                    Browser Profiles
-
-                                </div>
-
-
-                                <h3>
-
-                                    حساب‌های ثبت‌شده
-
-                                </h3>
-
-                            </div>
-
-                        </div>
-
-
-                        {
-                            accounts.length
-                            ===
-                            0
-
-                            ? (
-
-                                <div
-                                    className="
-                                        stagepilot-project-empty
-                                    "
-                                >
-
-                                    <div
-                                        className="
-                                            stagepilot-project-empty-mark
-                                        "
-                                    >
-
-                                        C
-
-                                    </div>
-
-
-                                    <h4>
-
-                                        هنوز حسابی ثبت نشده
-
-                                    </h4>
-
-
-                                    <p>
-
-                                        یک Profile مستقل
-                                        برای اولین حساب بساز.
-
-                                    </p>
-
-                                </div>
-
-                            )
-
-                            : (
-
-                                <div
-                                    className="
-                                        stagepilot-account-list
-                                    "
-                                >
-
-                                    {
-                                        accounts.map(
-                                            account => (
-
-                                                <Link
-                                                    href={
-                                                        `/chat-accounts/${account.id}`
-                                                    }
-                                                    key={
-                                                        account.id
-                                                    }
-                                                    className="
-                                                        stagepilot-account-card
-                                                    "
-                                                >
-
-                                                    <div
-                                                        className="
-                                                            stagepilot-account-card-main
-                                                        "
-                                                    >
-
-                                                        <div
-                                                            className="
-                                                                stagepilot-account-avatar
-                                                            "
-                                                        >
-
-                                                            GPT
-
-                                                        </div>
-
-
-                                                        <div
-                                                            className="
-                                                                flex-grow-1
-                                                            "
-                                                        >
-
-                                                            <div
-                                                                className="
-                                                                    stagepilot-account-key
-                                                                "
-                                                            >
-
-                                                                {
-                                                                    account.profile_key
-                                                                }
-
-                                                            </div>
-
-
-                                                            <h4>
-
-                                                                {
-                                                                    account.label
-                                                                }
-
-                                                            </h4>
-
-
-                                                            <div
-                                                                className="
-                                                                    stagepilot-account-meta
-                                                                "
-                                                            >
-
-                                                                <span>
-
-                                                                    Conversation:
-
-                                                                    {' '}
-
-                                                                    {
-                                                                        numberFormat(
-                                                                            account.conversation_count
-                                                                        )
-                                                                    }
-
-                                                                </span>
-
-
-                                                                <span>
-
-                                                                    Project:
-
-                                                                    {' '}
-
-                                                                    {
-                                                                        numberFormat(
-                                                                            account.selected_project_count
-                                                                        )
-                                                                    }
-
-                                                                </span>
-
-
-                                                                <span>
-
-                                                                    Mode:
-
-                                                                    {' '}
-
-                                                                    {
-                                                                        account.browser_mode
-                                                                        ??
-                                                                        'headless'
-                                                                    }
-
-                                                                </span>
-
-                                                            </div>
-
-                                                        </div>
-
-
-                                                        <span
-                                                            className={`
-                                                                stagepilot-state-badge
-                                                                state-${account.status}
-                                                            `}
-                                                        >
-
-                                                            {
-                                                                statusLabel(
-                                                                    account.status
-                                                                )
-                                                            }
-
-                                                        </span>
-
+                {accounts.length === 0 ? (
+                    <div className="stagepilot-project-empty"><div className="stagepilot-project-empty-mark">C</div><h4>هنوز حسابی ثبت نشده</h4><p>با دکمهٔ «حساب جدید» اولین Profile را بسازید.</p></div>
+                ) : (
+                    <div className="table-responsive">
+                        <table className="table stagepilot-data-table align-middle">
+                            <thead><tr><th>حساب</th><th>وضعیت</th><th>حالت مرورگر</th><th>پروژه / چت</th><th>Profile Key</th><th>عملیات</th></tr></thead>
+                            <tbody>
+                                {accounts.map(account => (
+                                    <tr key={account.id}>
+                                        <td>
+                                            <div className="stagepilot-account-identity">
+                                                <span className="stagepilot-account-avatar">GPT</span>
+                                                <div><div className="stagepilot-table-title">{account.label}</div><small>{String(account.metadata?.note ?? 'بدون یادداشت')}</small></div>
+                                            </div>
+                                        </td>
+                                        <td><span className={`stagepilot-state-badge state-${account.status}`}>{statusLabel(account.status)}</span></td>
+                                        <td><code>{account.browser_mode ?? 'headless'}</code></td>
+                                        <td>{numberFormat(account.selected_project_count)} / {numberFormat(account.conversation_count)}</td>
+                                        <td><code>{account.profile_key}</code></td>
+                                        <td>
+                                            <div className="stagepilot-row-actions">
+                                                <Link href={`/chat-accounts/${account.id}`} className="btn btn-sm btn-dark">مدیریت ورود</Link>
+                                                <details className="stagepilot-row-menu">
+                                                    <summary className="btn btn-sm btn-outline-secondary">ویرایش</summary>
+                                                    <form action={updateChatAccountAction.bind(null, account.id)} className="stagepilot-inline-editor">
+                                                        <label>نام<input name="label" defaultValue={account.label} required /></label>
+                                                        <label>یادداشت<textarea name="note" rows={3} defaultValue={String(account.metadata?.note ?? '')} /></label>
+                                                        <button type="submit" className="btn btn-sm btn-primary">ذخیره</button>
+                                                    </form>
+                                                </details>
+                                                <details className="stagepilot-row-menu danger">
+                                                    <summary className="btn btn-sm btn-outline-danger">حذف</summary>
+                                                    <div className="stagepilot-delete-confirm">
+                                                        <p>حساب غیرفعال می‌شود؛ Profile برای بازیابی امن حفظ خواهد شد.</p>
+                                                        <form action={deleteChatAccountAction.bind(null, account.id)}><button type="submit" className="btn btn-sm btn-danger">تأیید حذف</button></form>
                                                     </div>
-
-                                                </Link>
-
-                                            )
-                                        )
-                                    }
-
-                                </div>
-
-                            )
-                        }
-
+                                                </details>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
-
-                </div>
-
+                )}
             </section>
-
         </div>
-
     );
-
 }

@@ -1329,6 +1329,139 @@ async function composerText(
 }
 
 
+export async function replaceComposerTextAtomically({
+    page,
+    handle,
+    text
+}) {
+
+    await handle.focus();
+
+
+    await page.evaluate(
+        element => {
+
+            element.focus();
+
+
+            if (
+                element instanceof HTMLTextAreaElement
+                ||
+                element instanceof HTMLInputElement
+            ) {
+
+                element.select();
+
+                return;
+
+            }
+
+
+            const selection =
+                window.getSelection();
+
+
+            if (!selection) {
+
+                throw new Error(
+                    'WINDOW_SELECTION_UNAVAILABLE'
+                );
+
+            }
+
+
+            const range =
+                document.createRange();
+
+
+            range.selectNodeContents(
+                element
+            );
+
+
+            selection.removeAllRanges();
+
+
+            selection.addRange(
+                range
+            );
+
+        },
+        handle
+    );
+
+
+    await page.keyboard.press(
+        'Backspace'
+    );
+
+
+    /*
+     * insertText is one CDP text insertion and does not
+     * synthesize Enter key events for embedded newlines.
+     * keyboard.type() must never be used for prompts: every
+     * newline can otherwise submit a separate ChatGPT turn.
+     */
+    await page.keyboard.insertText(
+        text
+    );
+
+}
+
+
+async function userMessageCount(
+    page
+) {
+
+    return await page.evaluate(
+        () => {
+
+            const candidates = [
+
+                ...document.querySelectorAll(
+                    '[data-message-author-role="user"]'
+                ),
+
+                ...document.querySelectorAll(
+                    '[data-user-message-bubble="true"]'
+                ),
+
+                ...document.querySelectorAll(
+                    '[data-chatgpt-search-unit-key$=":user"]'
+                ),
+
+                ...document.querySelectorAll(
+                    '[data-content-search-unit-key$=":user"]'
+                )
+
+            ];
+
+
+            const messages =
+                new Set();
+
+
+            for (const candidate of candidates) {
+
+                messages.add(
+                    candidate.closest(
+                        '[data-turn-key]'
+                    )
+                    ??
+                    candidate
+                );
+
+            }
+
+
+            return messages.size;
+
+        }
+    );
+
+}
+
+
 async function firstSendButton(
     page
 ) {
@@ -1671,90 +1804,22 @@ async function draftPrompt({
     }
 
 
-    await composer
-        .handle
-        .focus();
-
-
-    /*
-     * Do not use keyboard.press('Control+A').
-     *
-     * Puppeteer's Keyboard.press() expects a single
-     * supported KeyInput, not a chord string.
-     *
-     * Select the existing Composer content through
-     * the DOM Selection API, then issue one ordinary
-     * Backspace key.
-     */
-    await page.evaluate(
-        element => {
-
-            element.focus();
-
-
-            if (
-                element instanceof HTMLTextAreaElement
-                ||
-                element instanceof HTMLInputElement
-            ) {
-
-                element.select();
-
-                return;
-
-            }
-
-
-            const selection =
-                window.getSelection();
-
-
-            if (!selection) {
-
-                throw new Error(
-                    'WINDOW_SELECTION_UNAVAILABLE'
-                );
-
-            }
-
-
-            const range =
-                document.createRange();
-
-
-            range.selectNodeContents(
-                element
-            );
-
-
-            selection.removeAllRanges();
-
-
-            selection.addRange(
-                range
-            );
-
-        },
-        composer.handle
-    );
-
-
-    await page
-        .keyboard
-        .press(
-            'Backspace'
+    const userMessageCountBeforeDraft =
+        await userMessageCount(
+            page
         );
 
 
-    await page
-        .keyboard
-        .type(
-            text,
-            {
-                delay:
-                    1
-            }
-        );
+    await replaceComposerTextAtomically({
+
+        page,
+
+        handle:
+            composer.handle,
+
+        text
+
+    });
 
 
     await sleep(
@@ -1766,6 +1831,12 @@ async function draftPrompt({
         await composerText(
             page,
             composer.handle
+        );
+
+
+    const userMessageCountAfterDraft =
+        await userMessageCount(
+            page
         );
 
 
@@ -1784,6 +1855,59 @@ async function draftPrompt({
         sha256(
             actualText
         );
+
+
+    if (
+        userMessageCountAfterDraft
+        !==
+        userMessageCountBeforeDraft
+    ) {
+
+        const uncertain = {
+
+            operationId,
+
+            state:
+                'SEND_UNCERTAIN',
+
+            reason:
+                'draft-created-user-turn',
+
+            promptHash:
+                expectedHash,
+
+            promptLength:
+                text.length,
+
+            clickCount:
+                0,
+
+            userMessageCountBeforeDraft,
+
+            userMessageCountAfterDraft,
+
+            createdAt:
+                new Date()
+                    .toISOString(),
+
+            updatedAt:
+                new Date()
+                    .toISOString()
+
+        };
+
+
+        await writeJsonAtomic(
+            statePath,
+            uncertain
+        );
+
+
+        throw new Error(
+            'DRAFT_TRIGGERED_UNEXPECTED_SEND'
+        );
+
+    }
 
 
     if (
@@ -1838,6 +1962,8 @@ async function draftPrompt({
 
         clickCount:
             0,
+
+        userMessageCountBeforeDraft,
 
         createdAt:
             new Date()
@@ -2164,10 +2290,59 @@ async function commitPrompt({
         deadline
     ) {
 
-        const route =
-            parseChatGPTLocation(
-                page.url()
+        let route;
+
+        let observedUserMessageCount;
+
+
+        try {
+
+            route =
+                parseChatGPTLocation(
+                    page.url()
+                );
+
+
+            observedUserMessageCount =
+                await userMessageCount(
+                    page
+                );
+
+        } catch (error) {
+
+            const uncertain = {
+
+                ...clickState,
+
+                state:
+                    'SEND_UNCERTAIN',
+
+                reason:
+                    'target-closed-after-click',
+
+                observationError:
+                    error instanceof Error
+                    ? error.message
+                    : String(
+                        error
+                    ),
+
+                updatedAt:
+                    new Date()
+                        .toISOString()
+
+            };
+
+
+            await writeJsonAtomic(
+                statePath,
+                uncertain
             );
+
+
+            return uncertain;
+
+        }
 
 
         if (
@@ -2176,6 +2351,14 @@ async function commitPrompt({
             'conversation'
             &&
             route.conversationId
+            &&
+            observedUserMessageCount
+            >
+            (
+                state.userMessageCountBeforeDraft
+                ??
+                0
+            )
         ) {
 
             const confirmed = {
@@ -2331,7 +2514,7 @@ export async function startChatGPTAdapter({
                         'chatgpt-browser-adapter',
 
                     version:
-                        4,
+                        5,
 
                     stage:
                         'S04/W04-A',
@@ -2341,6 +2524,12 @@ export async function startChatGPTAdapter({
 
                     automaticRetryAfterClick:
                         false,
+
+                    atomicMultilineInsertion:
+                        true,
+
+                    sendConfirmationRequiresNewUserTurn:
+                        true,
 
                     profileKey,
 

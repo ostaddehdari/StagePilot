@@ -79,6 +79,7 @@ npm ci
 npm run build
 npm run manager:plan-test --workspace @stagepilot/worker
 npm run automation:selftest --workspace @stagepilot/worker
+npm run browser:composer-test --workspace @stagepilot/worker
 node --check apps/worker/browser/chatgpt-adapter.mjs
 node --check apps/worker/src/browser-transport.mjs
 node --check apps/worker/src/planning-processor.mjs
@@ -105,6 +106,11 @@ rg -q "s04-w02-v2" apps/worker/browser/chatgpt-selectors.mjs \
     || fail 'resilient ChatGPT composer selectors missing'
 rg -q 'browser-diagnostics' apps/worker/browser/chatgpt-adapter.mjs \
     || fail 'browser failure diagnostic capture missing'
+rg -q 'keyboard.insertText' apps/worker/browser/chatgpt-adapter.mjs \
+    || fail 'atomic multiline Composer insertion missing'
+if rg -U 'keyboard\s*\.\s*type\s*\(\s*text\b' apps/worker/browser/chatgpt-adapter.mjs; then
+    fail 'unsafe multiline keyboard typing is present'
+fi
 
 systemctl stop "$WORKER_SERVICE"
 WORKER_WAS_STOPPED=1
@@ -128,39 +134,13 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/012_stage72_compl
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/013_core_automation.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/014_project_creation_reliability.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/015_unified_project_workspace.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/016_chatgpt_exactly_once.sql
 
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
-WITH latest_browser_failure AS (
-    SELECT DISTINCT ON (project_id) id
-    FROM prompt_requests
-    WHERE request_type = 'project_plan'
-      AND status = 'failed'
-      AND (
-          last_error IN ('COMPOSER_NOT_FOUND', 'COMPOSER_NOT_FOUND_BEFORE_SEND')
-          OR last_error LIKE 'connect ENOENT %/browser-adapter/%'
-      )
-    ORDER BY project_id, created_at DESC
-), recovered AS (
-    UPDATE prompt_requests
-    SET status = 'retry',
-        claimed_at = NULL,
-        claimed_by = NULL,
-        completed_at = NULL,
-        next_attempt_at = now(),
-        last_error = 'RECOVERED_BY_CHAT_OBSERVABILITY_RELEASE',
-        context_json = COALESCE(context_json, '{}'::jsonb) || jsonb_build_object(
-            'transportStage', 'retry',
-            'transportUpdatedAt', now()::text
-        )
-    WHERE request_type = 'project_plan'
-      AND (
-          status IN ('processing', 'sent', 'waiting_response')
-          OR id IN (SELECT id FROM latest_browser_failure)
-      )
-    RETURNING id
-)
-SELECT count(*) AS recovered_chatgpt_requests FROM recovered;
-SQL
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c \
+    "SELECT count(*) AS preserved_nonterminal_requests
+     FROM prompt_requests
+     WHERE request_type = 'project_plan'
+       AND status IN ('processing', 'sent', 'waiting_response');"
 
 chown -R "$RUNTIME_USER:$RUNTIME_GROUP" apps/web/.next
 find apps/web/.next -type d -exec chmod 755 {} +
@@ -194,6 +174,9 @@ DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version = '015_unified_project_workspace') THEN
         RAISE EXCEPTION 'migration 015_unified_project_workspace missing';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version = '016_chatgpt_exactly_once') THEN
+        RAISE EXCEPTION 'migration 016_chatgpt_exactly_once missing';
     END IF;
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns
@@ -229,6 +212,9 @@ printf '%s\n' 'Project noVNC monitor: PASS'
 printf '%s\n' 'Detailed failure diagnostics: PASS'
 printf '%s\n' 'Resilient ChatGPT composer detection: PASS'
 printf '%s\n' 'Detached browser runtime refresh: PASS'
+printf '%s\n' 'Atomic multiline prompt insertion: PASS'
+printf '%s\n' 'Single active planning request guard: PASS'
+printf '%s\n' 'Post-send automatic retry blocked: PASS'
 printf '%s\n' 'Per-project GitHub credentials: PASS'
 printf '%s\n' 'STAGEPILOT_UNIFIED_PROJECT=PASS'
 printf 'Finished: %s\n' "$(date -u +%FT%TZ)"

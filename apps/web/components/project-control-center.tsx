@@ -103,6 +103,9 @@ function planHtml(plan: Record<string, unknown>) {
 
 
 function errorLabel(error: string) {
+    if (error.startsWith('CHATGPT_SEND_NOT_CONFIRMED:SEND_UNCERTAIN')) {
+        return 'وضعیت ارسال قطعی نیست؛ برای جلوگیری از پیام تکراری، ارسال خودکار متوقف شد. چت ChatGPT را از مانیتور بررسی کنید.';
+    }
     const labels: Record<string, string> = {
         EXECUTED_NODE_CANNOT_BE_DELETED: 'این مرحله اجرا شده و برای حفظ سوابق قابل حذف نیست.',
         PROJECT_CHAT_ACCOUNT_REQUIRED: 'ابتدا یک حساب ChatGPT برای پروژه انتخاب کنید.',
@@ -112,6 +115,7 @@ function errorLabel(error: string) {
         'CHATGPT_INTERVENTION_REQUIRED:challenge': 'Cloudflare مانع دسترسی شده است؛ در تنظیمات پروژه noVNC را باز کنید و بررسی انسانی را کامل کنید.',
         'CHATGPT_INTERVENTION_REQUIRED:needs_login': 'حساب ChatGPT نیاز به ورود دارد؛ در تنظیمات پروژه noVNC را باز کنید و وارد حساب شوید.',
         'CHATGPT_INTERVENTION_REQUIRED:VISIBLE_BROWSER_ACTIVE': 'مرورگر noVNC برای مداخله دستی باز است؛ ابتدا ورود یا Cloudflare را تکمیل و سپس «پایان مشاهده و بازگشت خودکار» را بزنید.',
+        DRAFT_TRIGGERED_UNEXPECTED_SEND: 'هنگام درج متن یک ارسال ناخواسته تشخیص داده شد؛ چرخه فوراً متوقف شد و تکرار خودکار انجام نمی‌شود.',
         INCOMPLETE_NODE_ORDER: 'فهرست جابه‌جایی کامل نیست؛ صفحه تازه‌سازی شد.'
     };
     return labels[error] ?? error.replaceAll('_', ' ');
@@ -365,8 +369,8 @@ export function ProjectControlCenter({
                             <label><span>نوع مقصد</span><select name="chatTargetType" defaultValue={String(settings.chatTargetType ?? 'conversation')}><option value="conversation">چت معمولی</option><option value="project">ChatGPT Project</option></select></label>
                             <label><span>نشانی پروژه یا چت موجود</span><input name="chatProjectUrl" type="url" dir="ltr" autoComplete="url" defaultValue={String(settings.chatProjectUrl ?? data.registry.activeConversation?.external_url ?? '')} placeholder="https://chatgpt.com/g/... یا https://chatgpt.com/c/..." /></label>
                             <div className="sp-inline-actions">
-                                <button type="button" className="btn btn-outline-primary" disabled={Boolean(busy)} onClick={event => { const form = new FormData(event.currentTarget.form ?? undefined); void command('new-conversation', { chatAccountId: String(form.get('chatAccountId') ?? ''), startedReason: 'new_chat_requested' }, 'ساخت چت جدید و ارسال اولین پیام در صف Worker قرار گرفت.'); }}><i className="fa-solid fa-comment-medical" /> چت جدید</button>
-                                <button type="button" className="btn btn-outline-dark" disabled={Boolean(busy)} onClick={event => { const form = new FormData(event.currentTarget.form ?? undefined); void command('new-conversation', { chatAccountId: String(form.get('chatAccountId') ?? ''), startedReason: 'new_chatgpt_project_requested' }, 'ساخت ChatGPT Project و ارسال اولین پیام در صف Worker قرار گرفت.'); }}><i className="fa-solid fa-folder-plus" /> پروژه جدید ChatGPT</button>
+                                <button type="button" className="btn btn-outline-primary" disabled={Boolean(busy) || requestActive} onClick={event => { const form = new FormData(event.currentTarget.form ?? undefined); void command('new-conversation', { chatAccountId: String(form.get('chatAccountId') ?? ''), startedReason: 'new_chat_requested' }, 'ساخت چت جدید و ارسال اولین پیام در صف Worker قرار گرفت.'); }}><i className="fa-solid fa-comment-medical" /> چت جدید</button>
+                                <button type="button" className="btn btn-outline-dark" disabled={Boolean(busy) || requestActive} onClick={event => { const form = new FormData(event.currentTarget.form ?? undefined); void command('new-conversation', { chatAccountId: String(form.get('chatAccountId') ?? ''), startedReason: 'new_chatgpt_project_requested' }, 'ساخت ChatGPT Project و ارسال اولین پیام در صف Worker قرار گرفت.'); }}><i className="fa-solid fa-folder-plus" /> پروژه جدید ChatGPT</button>
                             </div>
                             <div className="sp-default-note"><i className="fa-solid fa-link" />{data.registry.activeConversation?.external_url || 'هنوز لینک فعالی ثبت نشده است.'}</div>
                             <div className="sp-browser-monitor">
@@ -379,7 +383,7 @@ export function ProjectControlCenter({
                                 <small>حالت فعلی: {data.browserMonitor.runtime?.mode ?? data.browserMonitor.login?.status ?? 'خاموش'} · ورود: {data.browserMonitor.runtime?.authState ?? 'نامشخص'}</small>
                             </div>
                         </article>
-                        <div className="sp-settings-submit"><button className="btn sp-primary" type="submit" name="intent" value="save" disabled={Boolean(busy)}><i className="fa-solid fa-floppy-disk" /> ذخیره تنظیمات</button><button className="btn btn-dark" type="submit" name="intent" value="evaluate" disabled={Boolean(busy)}><i className="fa-solid fa-paper-plane" /> ذخیره و شروع ارزیابی ایده</button></div>
+                        <div className="sp-settings-submit"><button className="btn sp-primary" type="submit" name="intent" value="save" disabled={Boolean(busy)}><i className="fa-solid fa-floppy-disk" /> ذخیره تنظیمات</button><button className="btn btn-dark" type="submit" name="intent" value="evaluate" disabled={Boolean(busy) || requestActive}><i className="fa-solid fa-paper-plane" /> ذخیره و شروع ارزیابی ایده</button></div>
                     </form>
                 </section>
             )}
@@ -440,7 +444,7 @@ export function ProjectControlCenter({
                             </div>
                             <form className="sp-chat-composer" onSubmit={event => { event.preventDefault(); const formElement = event.currentTarget; const form = new FormData(formElement); void command('planning-comment', { content: String(form.get('content') ?? '') }, 'نظر ثبت و چرخه جدید به ChatGPT ارسال شد.').then(result => { if (result) formElement.reset(); }); }}>
                                 <textarea name="content" required rows={3} maxLength={30000} autoComplete="off" placeholder="نظر، محدودیت یا تغییر موردنظر را بنویسید…" />
-                                <div><button type="submit" className="btn sp-primary" disabled={Boolean(busy)}><i className="fa-solid fa-paper-plane" /> ارسال نظر به ChatGPT</button><button type="button" className="btn btn-outline-primary" disabled={Boolean(busy)} onClick={() => void command('planning-evaluate', {}, 'چرخهٔ جدید ارزیابی به ChatGPT ارسال شد.')}><i className="fa-solid fa-wand-magic-sparkles" /> ساخت پروپوزال با ChatGPT</button></div>
+                                <div><button type="submit" className="btn sp-primary" disabled={Boolean(busy) || requestActive}><i className="fa-solid fa-paper-plane" /> ارسال نظر به ChatGPT</button><button type="button" className="btn btn-outline-primary" disabled={Boolean(busy) || requestActive} onClick={() => void command('planning-evaluate', {}, 'چرخهٔ جدید ارزیابی به ChatGPT ارسال شد.')}><i className="fa-solid fa-wand-magic-sparkles" /> ساخت پروپوزال با ChatGPT</button></div>
                             </form>
                         </> : (() => {
                             const inspector = inspectors.find(item => item.id === activeInspector);

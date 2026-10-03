@@ -608,6 +608,26 @@ export async function requestPlanningEvaluation(
 
         const project = projectResult.rows[0];
 
+        const activeRequestResult = await client.query(
+            `SELECT id, request_key, request_type, status, created_at,
+                    true AS already_active
+             FROM prompt_requests
+             WHERE project_id = $1::uuid
+               AND request_type = 'project_plan'
+               AND status IN (
+                    'created', 'retry', 'processing',
+                    'sent', 'waiting_response'
+               )
+             ORDER BY created_at DESC
+             LIMIT 1`,
+            [projectId]
+        );
+
+        if (activeRequestResult.rowCount === 1) {
+            await client.query('COMMIT');
+            return activeRequestResult.rows[0];
+        }
+
         if (!project.selected_chat_account_id) {
 
             const accountResult = await client.query(

@@ -190,14 +190,23 @@ export async function POST(
             }
             case 'browser-monitor-stop': {
                 const accountId = String(body.accountId ?? '');
-                result = await completeChatAccountBrowserLogin(accountId);
+                const browserRuntime = await completeChatAccountBrowserLogin(accountId);
+                const requestResult = browserRuntime.transitioned === true
+                    ? await requestPlanningEvaluationRequest(id)
+                    : null;
+                result = { browserRuntime, request: requestResult };
                 await internalProjectRequest(`/projects/${encodeURIComponent(id)}/diagnostic-events`, {
                     method: 'POST',
                     headers: { 'content-type': 'application/json' },
                     body: JSON.stringify({
                         eventType: 'browser.monitor.completed',
                         message: 'مانیتور زنده بسته و وضعیت ورود ChatGPT بررسی شد.',
-                        data: { accountId, result }
+                        data: {
+                            accountId,
+                            transitioned: browserRuntime.transitioned ?? false,
+                            authState: browserRuntime.authState ?? null,
+                            promptRequestId: requestResult?.promptRequest?.id ?? null
+                        }
                     })
                 });
                 break;

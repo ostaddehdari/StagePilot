@@ -109,18 +109,36 @@ rg -q 'browser-diagnostics' apps/worker/browser/chatgpt-adapter.mjs \
 systemctl stop "$WORKER_SERVICE"
 WORKER_WAS_STOPPED=1
 
+mapfile -t BROWSER_PROFILES < <(
+    psql "$DATABASE_URL" -Atqc \
+        "SELECT DISTINCT profile_key
+         FROM chat_accounts
+         WHERE deleted_at IS NULL
+           AND profile_key ~ '^[A-Za-z0-9][A-Za-z0-9._-]{2,120}$'
+         ORDER BY profile_key"
+)
+for profile_key in "${BROWSER_PROFILES[@]}"; do
+    node apps/worker/browser/headless-session.mjs stop "$profile_key" || true
+    node apps/worker/browser/login-session.mjs stop "$profile_key" || true
+    adapter_socket="$PROJECT_ROOT/runtime/browser-adapter/${profile_key}.sock"
+    [[ ! -S "$adapter_socket" ]] || rm -f -- "$adapter_socket"
+done
+
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/012_stage72_completion.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/013_core_automation.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/014_project_creation_reliability.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/015_unified_project_workspace.sql
 
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
-WITH latest_composer_failure AS (
+WITH latest_browser_failure AS (
     SELECT DISTINCT ON (project_id) id
     FROM prompt_requests
     WHERE request_type = 'project_plan'
       AND status = 'failed'
-      AND last_error IN ('COMPOSER_NOT_FOUND', 'COMPOSER_NOT_FOUND_BEFORE_SEND')
+      AND (
+          last_error IN ('COMPOSER_NOT_FOUND', 'COMPOSER_NOT_FOUND_BEFORE_SEND')
+          OR last_error LIKE 'connect ENOENT %/browser-adapter/%'
+      )
     ORDER BY project_id, created_at DESC
 ), recovered AS (
     UPDATE prompt_requests
@@ -137,7 +155,7 @@ WITH latest_composer_failure AS (
     WHERE request_type = 'project_plan'
       AND (
           status IN ('processing', 'sent', 'waiting_response')
-          OR id IN (SELECT id FROM latest_composer_failure)
+          OR id IN (SELECT id FROM latest_browser_failure)
       )
     RETURNING id
 )
@@ -210,6 +228,7 @@ printf '%s\n' 'ChatGPT live progress timeline: PASS'
 printf '%s\n' 'Project noVNC monitor: PASS'
 printf '%s\n' 'Detailed failure diagnostics: PASS'
 printf '%s\n' 'Resilient ChatGPT composer detection: PASS'
+printf '%s\n' 'Detached browser runtime refresh: PASS'
 printf '%s\n' 'Per-project GitHub credentials: PASS'
 printf '%s\n' 'STAGEPILOT_UNIFIED_PROJECT=PASS'
 printf 'Finished: %s\n' "$(date -u +%FT%TZ)"

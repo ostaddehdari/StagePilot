@@ -109,6 +109,9 @@ function errorLabel(error: string) {
         EXISTING_CHAT_URL_REQUIRED: 'نشانی چت یا پروژهٔ ChatGPT را وارد کنید.',
         EXPECTED_FINE_GRAINED_PAT: 'توکن باید Fine-grained GitHub PAT باشد.',
         INVALID_CHAT_PROJECT_URL: 'نشانی ChatGPT معتبر نیست.',
+        'CHATGPT_INTERVENTION_REQUIRED:challenge': 'Cloudflare مانع دسترسی شده است؛ در تنظیمات پروژه noVNC را باز کنید و بررسی انسانی را کامل کنید.',
+        'CHATGPT_INTERVENTION_REQUIRED:needs_login': 'حساب ChatGPT نیاز به ورود دارد؛ در تنظیمات پروژه noVNC را باز کنید و وارد حساب شوید.',
+        'CHATGPT_INTERVENTION_REQUIRED:VISIBLE_BROWSER_ACTIVE': 'مرورگر noVNC برای مداخله دستی باز است؛ ابتدا ورود یا Cloudflare را تکمیل و سپس «پایان مشاهده و بازگشت خودکار» را بزنید.',
         INCOMPLETE_NODE_ORDER: 'فهرست جابه‌جایی کامل نیست؛ صفحه تازه‌سازی شد.'
     };
     return labels[error] ?? error.replaceAll('_', ' ');
@@ -248,7 +251,7 @@ export function ProjectControlCenter({
         await command(
             'browser-monitor-stop',
             { accountId },
-            'مانیتور بسته و مرورگر خودکار دوباره آماده شد.'
+            'ورود بررسی شد؛ مانیتور بسته و چرخه جدید ChatGPT در صف قرار گرفت.'
         );
     }
 

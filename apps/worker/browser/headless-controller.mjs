@@ -968,6 +968,23 @@ try {
     };
 
 
+    adapter =
+        await startChatGPTAdapter({
+
+            page,
+
+            profileKey,
+
+            accountId
+
+        });
+
+
+    /*
+     * Publish the ready state only after the adapter socket is listening.
+     * Consumers treat this file as the readiness contract, so writing it
+     * before startChatGPTAdapter creates an ENOENT race on the Unix socket.
+     */
     await writeFile(
         statePath,
         JSON.stringify(
@@ -980,18 +997,6 @@ try {
                 0o600
         }
     );
-
-
-    adapter =
-        await startChatGPTAdapter({
-
-            page,
-
-            profileKey,
-
-            accountId
-
-        });
 
 
     console.log(

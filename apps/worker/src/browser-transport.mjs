@@ -4,10 +4,12 @@ import { mkdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { setTimeout as sleep } from 'node:timers/promises';
 
 const execFileAsync = promisify(execFile);
 const HERE = dirname(fileURLToPath(import.meta.url));
 const HEADLESS_MANAGER = join(HERE, '..', 'browser', 'headless-session.mjs');
+const VISIBLE_MANAGER = join(HERE, '..', 'browser', 'login-session.mjs');
 const ADAPTER_ROOT = process.env.STAGEPILOT_BROWSER_ADAPTER_ROOT
     ?? '/opt/stagepilot/runtime/browser-adapter';
 const RESPONSE_ROOT = process.env.STAGEPILOT_BROWSER_RESPONSE_ROOT
@@ -32,29 +34,73 @@ async function manager(command, profileKey, accountId = '', targetUrl = '') {
     return parseLastJson(result.stdout);
 }
 
+async function visibleManager(command, profileKey, accountId = '', targetUrl = '') {
+    const args = [VISIBLE_MANAGER, command, profileKey];
+    if (command === 'start') args.push(accountId, targetUrl || 'https://chatgpt.com/');
+    const result = await execFileAsync(process.execPath, args, {
+        env: process.env,
+        timeout: command === 'start' ? 100_000 : 20_000,
+        maxBuffer: 2 * 1024 * 1024
+    });
+    return parseLastJson(result.stdout);
+}
+
 export async function ensureBrowserRuntime({ profileKey, accountId, targetUrl }) {
     try {
         const visible = JSON.parse(
             await readFile(join(SESSION_ROOT, `${profileKey}.json`), 'utf8')
         );
         if (visible?.status === 'ready' && Number.isInteger(Number(visible.controllerPid))) {
+            let visibleAlive = false;
             try {
                 process.kill(Number(visible.controllerPid), 0);
-                return { ...visible, running: true, mode: 'visible' };
+                visibleAlive = true;
             } catch {
-                // Stale visible state; continue with the managed headless runtime.
+                visibleAlive = false;
             }
+            if (visibleAlive) {
+                const error = new Error('CHATGPT_INTERVENTION_REQUIRED:VISIBLE_BROWSER_ACTIVE');
+                error.diagnostic = {
+                    interventionRequired: true,
+                    reason: 'visible_browser_active',
+                    profileKey,
+                    mode: 'visible-login'
+                };
+                throw error;
+            }
+            // Stale visible state; continue with the managed background runtime.
         }
     } catch {
         // No visible monitoring runtime is active.
     }
     let state = await manager('status', profileKey).catch(() => null);
-    if (state?.running === true || state?.status === 'ready') return state;
-    state = await manager('start', profileKey, accountId, targetUrl);
+    if (!(state?.running === true || state?.status === 'ready')) {
+        state = await manager('start', profileKey, accountId, targetUrl);
+    }
+    if (['challenge', 'needs_login'].includes(String(state?.authState ?? ''))) {
+        await manager('stop', profileKey).catch(() => null);
+        const visible = await visibleManager(
+            'start',
+            profileKey,
+            accountId,
+            state?.currentUrl ?? targetUrl ?? 'https://chatgpt.com/'
+        ).catch(() => null);
+        const error = new Error(`CHATGPT_INTERVENTION_REQUIRED:${state.authState}`);
+        error.diagnostic = {
+            interventionRequired: true,
+            reason: state.authState,
+            profileKey,
+            visibleRuntimeStarted: visible?.status === 'ready',
+            noVncPort: visible?.noVncPort ?? null,
+            currentUrl: state?.currentUrl ?? targetUrl ?? null,
+            validation: state?.validation ?? null
+        };
+        throw error;
+    }
     return state;
 }
 
-export async function adapterRequest(profileKey, request, timeoutMs = 190_000) {
+async function adapterRequestOnce(profileKey, request, timeoutMs) {
     const socketPath = join(ADAPTER_ROOT, `${profileKey}.sock`);
     return await new Promise((resolve, reject) => {
         const socket = connect(socketPath);
@@ -86,6 +132,23 @@ export async function adapterRequest(profileKey, request, timeoutMs = 190_000) {
             }
         });
     });
+}
+
+export async function adapterRequest(profileKey, request, timeoutMs = 190_000) {
+    const readinessDeadline = Date.now() + 20_000;
+    while (true) {
+        try {
+            return await adapterRequestOnce(profileKey, request, timeoutMs);
+        } catch (error) {
+            if (
+                !['ENOENT', 'ECONNREFUSED'].includes(String(error?.code ?? ''))
+                || Date.now() >= readinessDeadline
+            ) {
+                throw error;
+            }
+            await sleep(250);
+        }
+    }
 }
 
 export async function sendPromptAndWait({

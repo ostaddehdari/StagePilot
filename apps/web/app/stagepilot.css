@@ -3468,6 +3468,13 @@ select {
 .sp-settings-submit .btn { display: inline-flex; align-items: center; gap: 7px; min-height: 40px; font-size: 10px; font-weight: 700; }
 .sp-settings-submit { grid-column: 1 / -1; justify-content: flex-end; gap: 9px; }
 .sp-primary { color: #fff !important; border-color: transparent !important; background: linear-gradient(135deg, #4f46e5, #7c3aed) !important; box-shadow: 0 9px 20px rgba(79, 70, 229, .18); }
+.sp-browser-monitor { margin-top: 14px; padding: 12px; border: 1px solid #dfe4ff; border-radius: 13px; background: linear-gradient(135deg, #f7f8ff, #f3f7ff); }
+.sp-browser-monitor > div:first-child { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.sp-browser-monitor > div:first-child > i { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 10px; color: #4f46e5; background: #e8eaff; }
+.sp-browser-monitor span { display: grid; gap: 2px; }
+.sp-browser-monitor strong { color: #303c54; font-size: 10px; }
+.sp-browser-monitor small { color: #78849a; font-size: 8px; line-height: 1.7; }
+.sp-browser-monitor > small { display: block; margin-top: 9px; direction: ltr; text-align: right; }
 
 .sp-workspace-layout { display: grid; grid-template-columns: minmax(270px, 340px) minmax(0, 1fr); gap: 14px; direction: ltr; min-height: 650px; }
 .sp-workspace-layout > * { direction: rtl; min-width: 0; }
@@ -3510,6 +3517,22 @@ select {
 .sp-inner-tabs button { display: flex; align-items: center; gap: 7px; min-width: max-content; padding: 0 12px; border: 0; border-radius: 9px; color: #667085; background: transparent; font-size: 9px; }
 .sp-inner-tabs button.active { color: #4338ca; background: #eef2ff; }
 .sp-inner-tabs button i:last-child { margin-right: 5px; color: #9aa4b7; }
+.sp-ai-progress { padding: 10px 13px; border-bottom: 1px solid #dfe5ef; background: linear-gradient(135deg, #f8faff, #f5f3ff); }
+.sp-ai-progress.state-failed { background: linear-gradient(135deg, #fff7f7, #fff1f2); }
+.sp-ai-progress.state-completed { background: linear-gradient(135deg, #f5fff9, #effcf6); }
+.sp-ai-progress-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.sp-ai-progress-head > span { display: flex; align-items: center; gap: 7px; color: #404c65; font-size: 9px; }
+.sp-ai-progress-head > span i { color: #6366f1; }
+.sp-ai-progress-head small { color: #8a94a8; font-size: 8px; }
+.sp-ai-timeline { display: flex; gap: 6px; margin-top: 9px; padding-bottom: 2px; overflow-x: auto; scrollbar-width: none; }
+.sp-ai-timeline::-webkit-scrollbar { display: none; }
+.sp-ai-timeline span { display: inline-flex; align-items: center; gap: 5px; min-width: max-content; padding: 5px 8px; border: 1px solid #e2e7f0; border-radius: 999px; color: #7b879c; background: #fff; font-size: 8px; }
+.sp-ai-timeline span.done { color: #047857; border-color: #ccebdc; background: #f1fbf6; }
+.sp-ai-timeline span.active { color: #4338ca; border-color: #cdd3ff; background: #eef2ff; }
+.sp-ai-progress.state-failed .sp-ai-timeline span.active { color: #b42318; border-color: #fecaca; background: #fff1f2; }
+.sp-ai-error { display: flex; gap: 8px; margin-top: 9px; padding: 8px 10px; border-radius: 9px; color: #9f1239; background: #ffe4e6; }
+.sp-ai-error span { display: grid; gap: 2px; font-size: 8px; }
+.sp-ai-error code { margin-top: 3px; color: #881337; font-size: 7px; text-align: left; overflow-wrap: anywhere; }
 .sp-chat-scroll,
 .sp-inspector-scroll { flex: 1; max-height: 530px; padding: 18px; overflow: auto; background: linear-gradient(180deg, #fff, #fafbfe); }
 .sp-message { max-width: 78%; margin-bottom: 12px; padding: 12px 14px; border-radius: 15px; background: #f0f3f8; }

@@ -72,6 +72,34 @@ async function recordEvent(
 }
 
 
+export async function recordProjectDiagnosticEvent(
+    projectId: string,
+    input: {
+        eventType?: unknown;
+        message?: unknown;
+        severity?: unknown;
+        data?: unknown;
+    }
+) {
+    const eventType = cleanText(input.eventType, 120);
+    const message = cleanText(input.message, 2_000);
+    const severity = cleanText(input.severity, 20) || 'info';
+    if (!/^[a-z0-9][a-z0-9._-]{2,119}$/.test(eventType)) throw new Error('INVALID_EVENT_TYPE');
+    if (!['info', 'warning', 'error'].includes(severity)) throw new Error('INVALID_EVENT_SEVERITY');
+    const data = input.data && typeof input.data === 'object' && !Array.isArray(input.data)
+        ? input.data as Record<string, unknown>
+        : {};
+    const db = getDatabasePool();
+    const exists = await db.query(
+        `SELECT 1 FROM projects WHERE id = $1::uuid AND deleted_at IS NULL`,
+        [projectId]
+    );
+    if (exists.rowCount !== 1) throw new Error('PROJECT_NOT_FOUND');
+    await recordEvent(db, projectId, eventType, message, data, severity);
+    return { recorded: true, eventType };
+}
+
+
 export async function updateProjectIntegrationSettings(
     projectId: string,
     input: {

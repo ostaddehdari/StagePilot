@@ -1,6 +1,74 @@
 import { parseManagerResponse } from '../manager/response-parser.mjs';
 import { sendPromptAndWait } from './browser-transport.mjs';
 
+const TRANSPORT_MESSAGES = {
+    worker_claimed: 'Worker درخواست برنامه‌ریزی را دریافت کرد.',
+    context_loading: 'اطلاعات پروژه، حساب ChatGPT و لینک مقصد در حال بررسی است.',
+    context_ready: 'حساب ChatGPT و مقصد گفت‌وگو آماده شد.',
+    browser_starting: 'مرورگر ChatGPT در حال راه‌اندازی است.',
+    browser_ready: 'مرورگر آماده شد.',
+    target_opening: 'لینک چت یا پروژه ChatGPT در حال بازشدن است.',
+    target_opened: 'لینک ChatGPT باز شد.',
+    project_creating: 'ساخت پروژه جدید در ChatGPT شروع شد.',
+    project_created: 'پروژه جدید ChatGPT ساخته شد.',
+    new_chat_opening: 'چت جدید ChatGPT در حال بازشدن است.',
+    new_chat_opened: 'چت جدید ChatGPT باز شد.',
+    composer_drafting: 'متن درخواست در کادر پیام وارد می‌شود.',
+    composer_ready: 'متن درخواست در کادر پیام وارد شد.',
+    send_clicking: 'دکمه ارسال ChatGPT در حال کلیک است.',
+    send_confirmed: 'ارسال پیام به ChatGPT تأیید شد.',
+    response_waiting: 'در انتظار تکمیل پاسخ ChatGPT هستیم.',
+    response_received: 'پاسخ کامل ChatGPT دریافت شد.',
+    completed: 'پاسخ اعتبارسنجی و در پروژه نمایش داده شد.',
+    failed: 'چرخه ChatGPT با خطا متوقف شد.'
+};
+
+async function recordTransportProgress(db, row, progress) {
+    const stage = String(progress?.stage ?? 'unknown').slice(0, 80);
+    const at = String(progress?.at ?? new Date().toISOString());
+    const entry = { ...progress, stage, at };
+    const nextStatus = stage === 'completed'
+        ? 'completed'
+        : stage === 'send_confirmed'
+        ? 'sent'
+        : stage === 'response_waiting'
+            ? 'waiting_response'
+            : 'processing';
+
+    await db.query(
+        `UPDATE prompt_requests
+         SET status = $2,
+             sent_at = CASE WHEN $3::text = 'send_confirmed' THEN COALESCE(sent_at, now()) ELSE sent_at END,
+             context_json = COALESCE(context_json, '{}'::jsonb) || jsonb_build_object(
+                'transportStage', $3::text,
+                'transportUpdatedAt', $4::text,
+                'transportHistory', COALESCE(context_json->'transportHistory', '[]'::jsonb) || $5::jsonb
+             )
+         WHERE id = $1::uuid`,
+        [row.id, nextStatus, stage, at, JSON.stringify([entry])]
+    );
+
+    if (row.project_id) {
+        await db.query(
+            `INSERT INTO events (
+                project_id, entity_type, entity_id, event_type, severity,
+                actor_type, actor_id, message, data
+             ) VALUES (
+                $1::uuid, 'prompt_request', $2::text, $3, 'info',
+                'worker', $4, $5, $6::jsonb
+             )`,
+            [
+                row.project_id,
+                row.id,
+                `planning.transport.${stage}`,
+                row.claimed_by ?? 'planning-worker',
+                TRANSPORT_MESSAGES[stage] ?? `ChatGPT transport stage: ${stage}`,
+                JSON.stringify(entry)
+            ]
+        );
+    }
+}
+
 function cleanJsonResponse(value) {
     const text = String(value ?? '').trim();
     const fenced = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
@@ -35,6 +103,33 @@ export async function claimPlanningRequest(db, workerKey) {
              WHERE id = $1::uuid
              RETURNING *`,
             [selected.rows[0].id, workerKey]
+        );
+        await client.query(
+            `UPDATE prompt_requests
+             SET context_json = COALESCE(context_json, '{}'::jsonb) || jsonb_build_object(
+                    'transportStage', 'worker_claimed',
+                    'transportUpdatedAt', now()::text,
+                    'transportHistory', COALESCE(context_json->'transportHistory', '[]'::jsonb)
+                        || jsonb_build_array(jsonb_build_object(
+                            'stage', 'worker_claimed',
+                            'at', now()::text,
+                            'workerKey', $2::text
+                        ))
+                 )
+             WHERE id = $1::uuid`,
+            [selected.rows[0].id, workerKey]
+        );
+        await client.query(
+            `INSERT INTO events (
+                project_id, entity_type, entity_id, event_type, severity,
+                actor_type, actor_id, message, data
+             )
+             SELECT project_id, 'prompt_request', id::text,
+                    'planning.transport.worker_claimed', 'info', 'worker', $2,
+                    $3, jsonb_build_object('workerKey', $2::text)
+             FROM prompt_requests
+             WHERE id = $1::uuid`,
+            [selected.rows[0].id, workerKey, TRANSPORT_MESSAGES.worker_claimed]
         );
         await client.query('COMMIT');
         return claimed.rows[0];
@@ -163,8 +258,21 @@ async function persistPlanResponse(db, row, transport) {
 }
 
 export async function processPlanningRequest(db, request) {
-    const row = await requestContext(db, request.id);
+    let row = request;
     try {
+        await recordTransportProgress(db, row, {
+            stage: 'context_loading',
+            at: new Date().toISOString()
+        });
+        row = await requestContext(db, request.id);
+        await recordTransportProgress(db, row, {
+            stage: 'context_ready',
+            at: new Date().toISOString(),
+            accountId: row.account_id,
+            profileKey: row.profile_key,
+            targetType: row.external_url ? 'existing' : 'new',
+            targetUrl: row.external_url ?? null
+        });
         const response = await sendPromptAndWait({
             profileKey: row.profile_key,
             accountId: row.account_id,
@@ -177,28 +285,82 @@ export async function processPlanningRequest(db, request) {
                     : null,
             operationId: `plan:${row.id}`,
             promptText: row.prompt_text,
-            timeoutMs: Number(process.env.STAGEPILOT_AI_RESPONSE_TIMEOUT_MS ?? 240_000)
+            timeoutMs: Number(process.env.STAGEPILOT_AI_RESPONSE_TIMEOUT_MS ?? 240_000),
+            onProgress: progress => recordTransportProgress(db, row, progress)
         });
-        return await persistPlanResponse(db, row, response);
+        const persisted = await persistPlanResponse(db, row, response);
+        await recordTransportProgress(db, row, {
+            stage: 'completed',
+            at: new Date().toISOString(),
+            planVersion: persisted.planVersion,
+            responseSha256: response.sha256
+        });
+        return persisted;
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        const stack = error instanceof Error ? error.stack ?? '' : '';
+        const failedAt = new Date().toISOString();
         await db.query(
             `UPDATE prompt_requests
-             SET status = 'failed', last_error = $2, completed_at = now()
+             SET status = 'failed', last_error = $2, completed_at = now(),
+                 context_json = COALESCE(context_json, '{}'::jsonb) || jsonb_build_object(
+                    'transportStage', 'failed',
+                    'transportUpdatedAt', $3::text,
+                    'transportHistory', COALESCE(context_json->'transportHistory', '[]'::jsonb)
+                        || $4::jsonb,
+                    'failureStack', $5::text
+                 )
              WHERE id = $1::uuid`,
-            [row.id, message.slice(0, 4000)]
+            [
+                request.id,
+                message.slice(0, 4000),
+                failedAt,
+                JSON.stringify([{ stage: 'failed', at: failedAt, error: message.slice(0, 4000) }]),
+                stack.slice(0, 12_000)
+            ]
         );
-        await db.query(
-            `INSERT INTO events (
-                project_id, entity_type, entity_id, event_type, severity,
-                actor_type, actor_id, message, data
-             ) VALUES (
-                $1::uuid, 'prompt_request', $2::text,
-                'planning.response.failed', 'error', 'worker', $3,
-                $4, jsonb_build_object('automaticRetry', false)
-             )`,
-            [row.project_id, row.id, row.claimed_by, message.slice(0, 2000)]
-        );
+        if (row.project_id ?? request.project_id) {
+            const projectId = row.project_id ?? request.project_id;
+            await db.query(
+                `INSERT INTO events (
+                    project_id, entity_type, entity_id, event_type, severity,
+                    actor_type, actor_id, message, data
+                 ) VALUES (
+                    $1::uuid, 'prompt_request', $2::text,
+                    'planning.response.failed', 'error', 'worker', $3,
+                    $4, $5::jsonb
+                 )`,
+                [
+                    projectId,
+                    request.id,
+                    row.claimed_by ?? request.claimed_by ?? 'planning-worker',
+                    `${TRANSPORT_MESSAGES.failed} ${message}`.slice(0, 2000),
+                    JSON.stringify({
+                        automaticRetry: false,
+                        errorName: error instanceof Error ? error.name : 'Error',
+                        errorMessage: message.slice(0, 4000),
+                        stack: stack.slice(0, 12_000),
+                        accountId: row.account_id ?? null,
+                        profileKey: row.profile_key ?? null,
+                        conversationUrl: row.external_url ?? null
+                    })
+                ]
+            );
+            await db.query(
+                `INSERT INTO project_planning_messages (
+                    project_id, revision, role, message_type, content, payload
+                 )
+                 SELECT $1::uuid, GREATEST(current_plan_revision, 1),
+                        'system', 'prompt', $2, $3::jsonb
+                 FROM projects
+                 WHERE id = $1::uuid AND deleted_at IS NULL`,
+                [
+                    projectId,
+                    `چرخه ChatGPT متوقف شد: ${message}`.slice(0, 30_000),
+                    JSON.stringify({ promptRequestId: request.id, stage: 'failed' })
+                ]
+            );
+        }
         throw error;
     }
 }

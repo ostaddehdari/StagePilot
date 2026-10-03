@@ -35,6 +35,12 @@ export type PlanningWorkspace = {
         request_type: string;
         status: string;
         last_error: string | null;
+        context_json: Record<string, unknown>;
+        send_attempts: number;
+        claimed_at: string | null;
+        sent_at: string | null;
+        claimed_by: string | null;
+        next_attempt_at: string | null;
         created_at: string;
         completed_at: string | null;
     }>;

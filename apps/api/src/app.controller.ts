@@ -97,6 +97,7 @@ import {
     createProjectTreeNode,
     deleteProjectTreeNode,
     getProjectNodeInspector,
+    recordProjectDiagnosticEvent,
     reorderProjectTree,
     saveProposalHtml,
     updateProjectIntegrationSettings,
@@ -910,6 +911,26 @@ export class AppController {
         } catch (error) {
             throw new BadRequestException(
                 error instanceof Error ? error.message : 'PROJECT_INTEGRATIONS_UPDATE_FAILED'
+            );
+        }
+    }
+
+
+    @Post('projects/:id/diagnostic-events')
+    async addProjectDiagnosticEvent(
+        @Param('id') id: string,
+        @Body() body: Record<string, unknown>,
+        @Headers('x-stagepilot-internal-key') internalKey?: string
+    ) {
+        this.authorizeInternal(internalKey);
+        try {
+            return {
+                ok: true,
+                event: await recordProjectDiagnosticEvent(id, body ?? {})
+            };
+        } catch (error) {
+            throw new BadRequestException(
+                error instanceof Error ? error.message : 'PROJECT_DIAGNOSTIC_EVENT_FAILED'
             );
         }
     }

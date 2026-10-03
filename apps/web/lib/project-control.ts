@@ -1,5 +1,9 @@
 import { loadProjectAutomation } from './automation';
-import { loadChatAccounts } from './chat-accounts';
+import {
+    loadChatAccountBrowserLogin,
+    loadChatAccountBrowserRuntime,
+    loadChatAccounts
+} from './chat-accounts';
 import { loadPlanningWorkspace } from './planning';
 import { loadProjectChatRegistry } from './project-chat';
 import { loadProject, loadProjectWorkspace } from './projects';
@@ -47,6 +51,13 @@ export async function loadProjectControlCenter(projectId: string) {
         loadSiteSettings()
     ]);
     if (!detail || !workspace || !planning) return null;
+    const accountId = registry.project.selected_chat_account_id;
+    const [browserLogin, browserRuntime] = accountId
+        ? await Promise.all([
+            loadChatAccountBrowserLogin(accountId).catch(() => null),
+            loadChatAccountBrowserRuntime(accountId).catch(() => null)
+        ])
+        : [null, null];
     return {
         project: detail.project,
         revision: detail.revision,
@@ -56,6 +67,11 @@ export async function loadProjectControlCenter(projectId: string) {
         registry,
         accounts,
         siteSettings,
+        browserMonitor: {
+            accountId,
+            login: browserLogin,
+            runtime: browserRuntime
+        },
         generatedAt: new Date().toISOString()
     };
 }

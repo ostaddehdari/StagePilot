@@ -36,6 +36,28 @@ const TAB_NAMES: Record<string, string> = {
     logs: 'گزارش رویدادها'
 };
 
+const TRANSPORT_LABELS: Record<string, string> = {
+    worker_claimed: 'Worker دریافت کرد',
+    context_loading: 'بررسی حساب و لینک',
+    context_ready: 'حساب و مقصد آماده',
+    browser_starting: 'راه‌اندازی مرورگر',
+    browser_ready: 'مرورگر آماده',
+    target_opening: 'بازکردن لینک ChatGPT',
+    target_opened: 'لینک باز شد',
+    project_creating: 'ساخت پروژه ChatGPT',
+    project_created: 'پروژه ChatGPT ساخته شد',
+    new_chat_opening: 'بازکردن چت جدید',
+    new_chat_opened: 'چت جدید باز شد',
+    composer_drafting: 'درج متن درخواست',
+    composer_ready: 'متن وارد شد',
+    send_clicking: 'کلیک دکمه ارسال',
+    send_confirmed: 'ارسال تأیید شد',
+    response_waiting: 'انتظار پاسخ ChatGPT',
+    response_received: 'پاسخ دریافت شد',
+    completed: 'نتیجه ثبت و نمایش شد',
+    failed: 'چرخه با خطا متوقف شد'
+};
+
 
 function faNumber(value: number) {
     return new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 1 }).format(value);
@@ -109,6 +131,13 @@ export function ProjectControlCenter({
     const [inspectors, setInspectors] = useState<InspectorTab[]>([]);
     const [activeInspector, setActiveInspector] = useState('chat');
     const latestPlan = data.planning.plans[0] ?? null;
+    const latestRequest = data.planning.promptRequests[0] ?? null;
+    const transportHistory = Array.isArray(latestRequest?.context_json?.transportHistory)
+        ? latestRequest.context_json.transportHistory as Array<Record<string, unknown>>
+        : [];
+    const requestActive = latestRequest
+        ? ['created', 'retry', 'processing', 'sent', 'waiting_response'].includes(latestRequest.status)
+        : false;
     const defaultHtml = useMemo(
         () => latestPlan ? (latestPlan.proposal_html || planHtml(latestPlan.proposal_json)) : '',
         [latestPlan]
@@ -156,9 +185,9 @@ export function ProjectControlCenter({
     useEffect(() => {
         const timer = window.setInterval(() => {
             if (!busy && !treeEditor) void refresh(true);
-        }, 15000);
+        }, requestActive ? 3000 : 15000);
         return () => window.clearInterval(timer);
-    }, [busy, treeEditor]);
+    }, [busy, treeEditor, requestActive]);
 
     useEffect(() => {
         setProposalSource(defaultHtml);
@@ -173,8 +202,10 @@ export function ProjectControlCenter({
 
     async function saveSettings(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
+        const submitter = (event.nativeEvent as SubmitEvent).submitter;
+        const intent = submitter instanceof HTMLButtonElement ? submitter.value : '';
         const form = new FormData(event.currentTarget);
-        await command('save-settings', {
+        const saved = await command('save-settings', {
             chatAccountId: String(form.get('chatAccountId') ?? ''),
             payload: {
                 githubMode: String(form.get('githubMode') ?? 'global'),
@@ -187,6 +218,38 @@ export function ProjectControlCenter({
                 chatProjectUrl: String(form.get('chatProjectUrl') ?? '')
             }
         }, 'تنظیمات اتصال پروژه ذخیره شد.');
+        if (saved && intent === 'evaluate') {
+            await command('planning-evaluate', {}, 'تنظیمات ذخیره و ارزیابی ایده در صف ChatGPT قرار گرفت.');
+        }
+    }
+
+    async function startBrowserMonitor(formElement: HTMLFormElement | null) {
+        if (!formElement) return;
+        const form = new FormData(formElement);
+        const accountId = String(form.get('chatAccountId') ?? '');
+        const targetUrl = String(form.get('chatProjectUrl') ?? '');
+        const popup = window.open('about:blank', 'stagepilot-chatgpt-monitor');
+        const result = await command(
+            'browser-monitor-start',
+            { accountId, targetUrl },
+            'مانیتور زنده ChatGPT فعال شد.'
+        ) as { viewerUrl?: string } | null;
+        if (result?.viewerUrl) {
+            if (popup) popup.location.href = result.viewerUrl;
+            else window.location.href = result.viewerUrl;
+        } else {
+            popup?.close();
+        }
+    }
+
+    async function stopBrowserMonitor() {
+        const accountId = data.browserMonitor.accountId;
+        if (!accountId) return;
+        await command(
+            'browser-monitor-stop',
+            { accountId },
+            'مانیتور بسته و مرورگر خودکار دوباره آماده شد.'
+        );
     }
 
     async function submitTreeEditor(event: FormEvent<HTMLFormElement>) {
@@ -299,12 +362,21 @@ export function ProjectControlCenter({
                             <label><span>نوع مقصد</span><select name="chatTargetType" defaultValue={String(settings.chatTargetType ?? 'conversation')}><option value="conversation">چت معمولی</option><option value="project">ChatGPT Project</option></select></label>
                             <label><span>نشانی پروژه یا چت موجود</span><input name="chatProjectUrl" type="url" dir="ltr" autoComplete="url" defaultValue={String(settings.chatProjectUrl ?? data.registry.activeConversation?.external_url ?? '')} placeholder="https://chatgpt.com/g/... یا https://chatgpt.com/c/..." /></label>
                             <div className="sp-inline-actions">
-                                <button type="button" className="btn btn-outline-primary" disabled={Boolean(busy)} onClick={() => void command('new-conversation', { startedReason: 'new_chat_requested' }, 'ساخت چت جدید در صف Worker قرار گرفت.')}><i className="fa-solid fa-comment-medical" /> چت جدید</button>
-                                <button type="button" className="btn btn-outline-dark" disabled={Boolean(busy)} onClick={() => void command('new-conversation', { startedReason: 'new_chatgpt_project_requested' }, 'ساخت ChatGPT Project جدید در صف Worker قرار گرفت.')}><i className="fa-solid fa-folder-plus" /> پروژه جدید ChatGPT</button>
+                                <button type="button" className="btn btn-outline-primary" disabled={Boolean(busy)} onClick={event => { const form = new FormData(event.currentTarget.form ?? undefined); void command('new-conversation', { chatAccountId: String(form.get('chatAccountId') ?? ''), startedReason: 'new_chat_requested' }, 'ساخت چت جدید و ارسال اولین پیام در صف Worker قرار گرفت.'); }}><i className="fa-solid fa-comment-medical" /> چت جدید</button>
+                                <button type="button" className="btn btn-outline-dark" disabled={Boolean(busy)} onClick={event => { const form = new FormData(event.currentTarget.form ?? undefined); void command('new-conversation', { chatAccountId: String(form.get('chatAccountId') ?? ''), startedReason: 'new_chatgpt_project_requested' }, 'ساخت ChatGPT Project و ارسال اولین پیام در صف Worker قرار گرفت.'); }}><i className="fa-solid fa-folder-plus" /> پروژه جدید ChatGPT</button>
                             </div>
                             <div className="sp-default-note"><i className="fa-solid fa-link" />{data.registry.activeConversation?.external_url || 'هنوز لینک فعالی ثبت نشده است.'}</div>
+                            <div className="sp-browser-monitor">
+                                <div><i className="fa-solid fa-desktop" /><span><strong>مشاهده زنده ChatGPT</strong><small>مرورگر را با noVNC ببینید و اگر ورود یا تأییدی لازم بود همان‌جا انجام دهید.</small></span></div>
+                                <div className="sp-inline-actions">
+                                    <button type="button" className="btn btn-outline-primary" disabled={Boolean(busy)} onClick={event => void startBrowserMonitor(event.currentTarget.form)}><i className="fa-solid fa-eye" /> بازکردن noVNC</button>
+                                    {data.browserMonitor.login?.viewerUrl && <a className="btn btn-outline-dark" target="_blank" rel="noreferrer" href={data.browserMonitor.login.viewerUrl}><i className="fa-solid fa-up-right-from-square" /> نمایش مانیتور فعال</a>}
+                                    <button type="button" className="btn btn-outline-secondary" disabled={Boolean(busy) || !data.browserMonitor.accountId} onClick={() => void stopBrowserMonitor()}><i className="fa-solid fa-circle-check" /> پایان مشاهده و بازگشت خودکار</button>
+                                </div>
+                                <small>حالت فعلی: {data.browserMonitor.runtime?.mode ?? data.browserMonitor.login?.status ?? 'خاموش'} · ورود: {data.browserMonitor.runtime?.authState ?? 'نامشخص'}</small>
+                            </div>
                         </article>
-                        <div className="sp-settings-submit"><button className="btn sp-primary" type="submit" disabled={Boolean(busy)}><i className="fa-solid fa-floppy-disk" /> ذخیره تنظیمات</button><button className="btn btn-dark" type="button" disabled={Boolean(busy)} onClick={() => void command('planning-evaluate', {}, 'ارزیابی ایده در صف ChatGPT قرار گرفت.')}><i className="fa-solid fa-paper-plane" /> ذخیره شده؟ شروع ارزیابی ایده</button></div>
+                        <div className="sp-settings-submit"><button className="btn sp-primary" type="submit" name="intent" value="save" disabled={Boolean(busy)}><i className="fa-solid fa-floppy-disk" /> ذخیره تنظیمات</button><button className="btn btn-dark" type="submit" name="intent" value="evaluate" disabled={Boolean(busy)}><i className="fa-solid fa-paper-plane" /> ذخیره و شروع ارزیابی ایده</button></div>
                     </form>
                 </section>
             )}
@@ -350,13 +422,22 @@ export function ProjectControlCenter({
                             {inspectors.map(item => <button type="button" key={item.id} className={activeInspector === item.id ? 'active' : ''} onClick={() => setActiveInspector(item.id)}><i className="fa-solid fa-terminal" />{item.title}<i className="fa-solid fa-xmark" onClick={event => { event.stopPropagation(); setInspectors(current => current.filter(tabItem => tabItem.id !== item.id)); setActiveInspector('chat'); }} /></button>)}
                         </div>
                         {activeInspector === 'chat' ? <>
+                            {latestRequest && <div className={`sp-ai-progress state-${latestRequest.status}`}>
+                                <div className="sp-ai-progress-head"><span><i className={requestActive ? 'fa-solid fa-spinner fa-spin' : latestRequest.status === 'completed' ? 'fa-solid fa-circle-check' : 'fa-solid fa-triangle-exclamation'} /><strong>{latestRequest.status === 'completed' ? 'چرخه ChatGPT تکمیل شد' : latestRequest.status === 'failed' ? 'چرخه ChatGPT ناموفق بود' : 'چرخه ChatGPT در حال اجراست'}</strong></span><small>{faDate(latestRequest.created_at)}</small></div>
+                                <div className="sp-ai-timeline">
+                                    {transportHistory.length === 0
+                                        ? <span className="active"><i className="fa-solid fa-clock" />در صف Worker</span>
+                                        : transportHistory.map((item, index) => <span key={`${safeText(item.stage)}-${index}`} className={index === transportHistory.length - 1 ? 'active' : 'done'} title={safeText(item.at)}><i className={`fa-solid ${safeText(item.stage) === 'failed' ? 'fa-circle-xmark' : index === transportHistory.length - 1 && requestActive ? 'fa-spinner fa-spin' : 'fa-circle-check'}`} />{TRANSPORT_LABELS[safeText(item.stage)] ?? safeText(item.stage)}</span>)}
+                                </div>
+                                {latestRequest.last_error && <div className="sp-ai-error"><i className="fa-solid fa-bug" /><span><strong>علت توقف</strong>{errorLabel(latestRequest.last_error)}<code dir="ltr">{latestRequest.last_error}</code></span></div>}
+                            </div>}
                             <div className="sp-chat-scroll">
                                 {data.planning.messages.length === 0 && <div className="sp-empty-chat"><i className="fa-solid fa-wand-magic-sparkles" /><h3>ایده آمادهٔ ارزیابی است</h3><p>تنظیمات را کامل و اولین چرخه را برای ChatGPT ارسال کنید.</p></div>}
                                 {data.planning.messages.map(message => <article key={message.id} className={`sp-message role-${message.role}`}><header><strong>{message.role === 'user' ? 'شما' : message.role === 'assistant' ? 'هوش مصنوعی' : 'StagePilot'}</strong><span>{faDate(message.created_at)}</span></header><p>{message.content}</p></article>)}
                             </div>
-                            <form className="sp-chat-composer" onSubmit={event => { event.preventDefault(); const form = new FormData(event.currentTarget); void command('planning-comment', { content: String(form.get('content') ?? '') }, 'نظر شما ثبت شد.').then(result => { if (result) event.currentTarget.reset(); }); }}>
+                            <form className="sp-chat-composer" onSubmit={event => { event.preventDefault(); const formElement = event.currentTarget; const form = new FormData(formElement); void command('planning-comment', { content: String(form.get('content') ?? '') }, 'نظر ثبت و چرخه جدید به ChatGPT ارسال شد.').then(result => { if (result) formElement.reset(); }); }}>
                                 <textarea name="content" required rows={3} maxLength={30000} autoComplete="off" placeholder="نظر، محدودیت یا تغییر موردنظر را بنویسید…" />
-                                <div><button type="submit" className="btn btn-outline-primary" disabled={Boolean(busy)}><i className="fa-solid fa-plus" /> ثبت نظر</button><button type="button" className="btn sp-primary" disabled={Boolean(busy)} onClick={() => void command('planning-evaluate', {}, 'چرخهٔ جدید ارزیابی به ChatGPT ارسال شد.')}><i className="fa-solid fa-paper-plane" /> ساخت پروپوزال با ChatGPT</button></div>
+                                <div><button type="submit" className="btn sp-primary" disabled={Boolean(busy)}><i className="fa-solid fa-paper-plane" /> ارسال نظر به ChatGPT</button><button type="button" className="btn btn-outline-primary" disabled={Boolean(busy)} onClick={() => void command('planning-evaluate', {}, 'چرخهٔ جدید ارزیابی به ChatGPT ارسال شد.')}><i className="fa-solid fa-wand-magic-sparkles" /> ساخت پروپوزال با ChatGPT</button></div>
                             </form>
                         </> : (() => {
                             const inspector = inspectors.find(item => item.id === activeInspector);

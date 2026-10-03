@@ -457,7 +457,8 @@ export async function loadChatAccountBrowserLogin(
 
 
 export async function startChatAccountBrowserLogin(
-    accountId: string
+    accountId: string,
+    targetUrl?: string
 ): Promise<ChatAccountBrowserLogin> {
 
     return browserLoginRequest(
@@ -474,7 +475,12 @@ export async function startChatAccountBrowserLogin(
             },
 
             body:
-                '{}'
+                JSON.stringify({
+                    targetUrl:
+                        targetUrl
+                        ||
+                        undefined
+                })
         }
     );
 

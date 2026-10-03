@@ -3,6 +3,11 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { SESSION_COOKIE, verifySessionToken } from '../../../../../lib/auth';
 import { controlProjectAutomationRequest } from '../../../../../lib/automation';
+import {
+    completeChatAccountBrowserLogin,
+    startChatAccountBrowserLogin,
+    stopChatAccountHeadless
+} from '../../../../../lib/chat-accounts';
 import { selectProjectChatAccountRequest, registerProjectConversationRequest } from '../../../../../lib/project-chat';
 import {
     addPlanningMessageRequest,
@@ -82,12 +87,20 @@ export async function POST(
                 }
                 break;
             }
-            case 'new-conversation':
-                result = await registerProjectConversationRequest(id, {
+            case 'new-conversation': {
+                if (body.chatAccountId) {
+                    await selectProjectChatAccountRequest(id, String(body.chatAccountId));
+                }
+                const conversation = await registerProjectConversationRequest(id, {
                     mode: 'new',
                     startedReason: String(body.startedReason ?? 'project_control_center')
                 });
+                result = {
+                    conversation,
+                    request: await requestPlanningEvaluationRequest(id)
+                };
                 break;
+            }
             case 'existing-conversation':
                 result = await registerProjectConversationRequest(id, {
                     mode: 'existing',
@@ -96,7 +109,10 @@ export async function POST(
                 });
                 break;
             case 'planning-comment':
-                result = await addPlanningMessageRequest(id, String(body.content ?? ''));
+                result = {
+                    message: await addPlanningMessageRequest(id, String(body.content ?? '')),
+                    request: await requestPlanningEvaluationRequest(id)
+                };
                 break;
             case 'planning-evaluate':
                 result = await requestPlanningEvaluationRequest(id);
@@ -156,6 +172,36 @@ export async function POST(
             case 'automation':
                 result = await controlProjectAutomationRequest(id, String(body.command ?? ''));
                 break;
+            case 'browser-monitor-start': {
+                const accountId = String(body.accountId ?? '');
+                const targetUrl = String(body.targetUrl ?? '') || undefined;
+                await stopChatAccountHeadless(accountId).catch(() => null);
+                result = await startChatAccountBrowserLogin(accountId, targetUrl);
+                await internalProjectRequest(`/projects/${encodeURIComponent(id)}/diagnostic-events`, {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({
+                        eventType: 'browser.monitor.started',
+                        message: 'مانیتور زنده noVNC برای مشاهده چرخه ChatGPT فعال شد.',
+                        data: { accountId, targetUrl: targetUrl ?? null }
+                    })
+                });
+                break;
+            }
+            case 'browser-monitor-stop': {
+                const accountId = String(body.accountId ?? '');
+                result = await completeChatAccountBrowserLogin(accountId);
+                await internalProjectRequest(`/projects/${encodeURIComponent(id)}/diagnostic-events`, {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({
+                        eventType: 'browser.monitor.completed',
+                        message: 'مانیتور زنده بسته و وضعیت ورود ChatGPT بررسی شد.',
+                        data: { accountId, result }
+                    })
+                });
+                break;
+            }
             default:
                 return NextResponse.json({ error: 'UNKNOWN_ACTION' }, { status: 400 });
         }
@@ -163,6 +209,16 @@ export async function POST(
     } catch (error) {
         const message = error instanceof Error ? error.message : 'PROJECT_CONTROL_FAILED';
         console.error(`[project-control:${id}:${action}]`, message);
+        await internalProjectRequest(`/projects/${encodeURIComponent(id)}/diagnostic-events`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+                eventType: 'project.control.failed',
+                severity: 'error',
+                message: `عملیات ${action || 'unknown'} انجام نشد: ${message}`,
+                data: { action, error: message }
+            })
+        }).catch(() => null);
         return NextResponse.json({ error: message }, { status: 400 });
     }
 }

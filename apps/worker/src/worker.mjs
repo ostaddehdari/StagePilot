@@ -61,11 +61,36 @@ async function heartbeat(status = 'ready') {
 
 async function recoverStaleClaims() {
     await db.query(
-        `UPDATE prompt_requests
-         SET status = 'failed', completed_at = now(),
-             last_error = COALESCE(last_error, 'WORKER_INTERRUPTED_RECONCILIATION_REQUIRED')
-         WHERE status = 'processing'
-           AND claimed_at < now() - interval '30 minutes'`
+        `WITH recovered AS (
+            UPDATE prompt_requests
+            SET status = CASE WHEN send_attempts < 3 THEN 'retry' ELSE 'failed' END,
+                completed_at = CASE WHEN send_attempts < 3 THEN NULL ELSE now() END,
+                next_attempt_at = CASE WHEN send_attempts < 3 THEN now() ELSE NULL END,
+                claimed_at = NULL,
+                claimed_by = NULL,
+                last_error = 'WORKER_INTERRUPTED_AUTOMATIC_RECOVERY',
+                context_json = COALESCE(context_json, '{}'::jsonb) || jsonb_build_object(
+                    'transportStage', CASE WHEN send_attempts < 3 THEN 'retry' ELSE 'failed' END,
+                    'transportUpdatedAt', now()::text
+                )
+            WHERE request_type = 'project_plan'
+              AND status IN ('processing', 'sent', 'waiting_response')
+              AND claimed_at < now() - interval '30 minutes'
+            RETURNING id, project_id, status, send_attempts
+         )
+         INSERT INTO events (
+            project_id, entity_type, entity_id, event_type, severity,
+            actor_type, actor_id, message, data
+         )
+         SELECT project_id, 'prompt_request', id::text,
+                'planning.request.recovered', 'warning', 'worker', $1,
+                CASE WHEN status = 'retry'
+                    THEN 'چرخه متوقف‌شده ChatGPT برای تلاش مجدد بازیابی شد.'
+                    ELSE 'چرخه ChatGPT پس از سه تلاش ناموفق متوقف شد.'
+                END,
+                jsonb_build_object('status', status, 'sendAttempts', send_attempts)
+         FROM recovered`,
+        [workerKey]
     );
     await db.query(
         `UPDATE project_automation_state

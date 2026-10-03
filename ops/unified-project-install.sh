@@ -11,10 +11,12 @@ INTERNAL_ENV_FILE="${STAGEPILOT_INTERNAL_ENV_FILE:-$PROJECT_ROOT/runtime/interna
 LOG_FILE="${STAGEPILOT_LOG_FILE:-/root/runlog.txt}"
 TIMESTAMP="$(date -u +%Y%m%d-%H%M%S)"
 BACKUP_ROOT="${STAGEPILOT_BACKUP_ROOT:-$PROJECT_ROOT/backups/unified-project-$TIMESTAMP}"
+WORKER_SERVICE="${STAGEPILOT_WORKER_SERVICE:-stagepilot-worker.service}"
+WORKER_WAS_STOPPED=0
 SERVICES=(
     "${STAGEPILOT_API_SERVICE:-stagepilot-api.service}"
     "${STAGEPILOT_WEB_SERVICE:-stagepilot-web.service}"
-    "${STAGEPILOT_WORKER_SERVICE:-stagepilot-worker.service}"
+    "$WORKER_SERVICE"
 )
 
 if [[ "${STAGEPILOT_LOG_INITIALIZED:-0}" != "1" ]]; then
@@ -28,7 +30,14 @@ fail() {
     exit 1
 }
 
-trap 'printf "FAILED_AT_LINE=%s\n" "$LINENO"' ERR
+on_error() {
+    local line="$1"
+    if [[ "$WORKER_WAS_STOPPED" == "1" ]]; then
+        systemctl start "$WORKER_SERVICE" >/dev/null 2>&1 || true
+    fi
+    printf 'FAILED_AT_LINE=%s\n' "$line"
+}
+trap 'on_error "$LINENO"' ERR
 
 printf '%s\n' '============================================================'
 printf '%s\n' ' STAGEPILOT — UNIFIED PROJECT CONTROL CENTER'
@@ -86,11 +95,40 @@ fi
 if rg -P '(?<!\$)\beval\s*\(|\bnew Function\s*\(' apps/web apps/api apps/worker --glob '!*.map'; then
     fail 'unsafe JavaScript string evaluation detected'
 fi
+rg -q 'response_waiting' apps/worker/src/planning-processor.mjs \
+    || fail 'ChatGPT transport progress logging missing'
+rg -q "browser-monitor-start" apps/web/app/api/projects/'[id]'/control/route.ts \
+    || fail 'project noVNC monitor action missing'
+rg -q 'transportHistory' apps/web/components/project-control-center.tsx \
+    || fail 'project ChatGPT progress timeline missing'
+
+systemctl stop "$WORKER_SERVICE"
+WORKER_WAS_STOPPED=1
 
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/012_stage72_completion.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/013_core_automation.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/014_project_creation_reliability.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/015_unified_project_workspace.sql
+
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+WITH recovered AS (
+    UPDATE prompt_requests
+    SET status = 'retry',
+        claimed_at = NULL,
+        claimed_by = NULL,
+        completed_at = NULL,
+        next_attempt_at = now(),
+        last_error = 'RECOVERED_BY_CHAT_OBSERVABILITY_RELEASE',
+        context_json = COALESCE(context_json, '{}'::jsonb) || jsonb_build_object(
+            'transportStage', 'retry',
+            'transportUpdatedAt', now()::text
+        )
+    WHERE request_type = 'project_plan'
+      AND status IN ('processing', 'sent', 'waiting_response')
+    RETURNING id
+)
+SELECT count(*) AS recovered_chatgpt_requests FROM recovered;
+SQL
 
 chown -R "$RUNTIME_USER:$RUNTIME_GROUP" apps/web/.next
 find apps/web/.next -type d -exec chmod 755 {} +
@@ -99,6 +137,7 @@ find apps/web/.next -type f -exec chmod 644 {} +
 for service_name in "${SERVICES[@]}"; do
     systemctl restart "$service_name"
 done
+WORKER_WAS_STOPPED=0
 
 for service_name in "${SERVICES[@]}"; do
     for _ in {1..30}; do
@@ -153,6 +192,9 @@ printf '%s\n' 'Unified AJAX workspace: PASS'
 printf '%s\n' 'Tree mutation guards: PASS'
 printf '%s\n' 'Proposal HTML storage: PASS'
 printf '%s\n' 'ChatGPT project transport: PASS'
+printf '%s\n' 'ChatGPT live progress timeline: PASS'
+printf '%s\n' 'Project noVNC monitor: PASS'
+printf '%s\n' 'Detailed failure diagnostics: PASS'
 printf '%s\n' 'Per-project GitHub credentials: PASS'
 printf '%s\n' 'STAGEPILOT_UNIFIED_PROJECT=PASS'
 printf 'Finished: %s\n' "$(date -u +%FT%TZ)"

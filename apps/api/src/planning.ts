@@ -500,7 +500,8 @@ export async function getPlanningWorkspace(
             ),
             db.query(
                 `SELECT id, request_key, request_type, status, last_error,
-                        created_at, completed_at
+                        context_json, send_attempts, claimed_at, sent_at,
+                        claimed_by, next_attempt_at, created_at, completed_at
                  FROM prompt_requests
                  WHERE project_id = $1::uuid
                    AND request_type = 'project_plan'
@@ -735,6 +736,29 @@ export async function requestPlanningEvaluation(
                 project.current_plan_revision,
                 requestResult.rows[0].id,
                 requestKey
+            ]
+        );
+
+        await client.query(
+            `INSERT INTO events (
+                project_id, entity_type, entity_id, event_type, severity,
+                actor_type, actor_id, message, data
+             ) VALUES (
+                $1::uuid, 'prompt_request', $2::text,
+                'planning.request.queued', 'info', 'user', 'private-admin',
+                'درخواست ارزیابی در صف ChatGPT قرار گرفت.',
+                jsonb_build_object(
+                    'requestKey', $3::text,
+                    'conversationId', $4::uuid,
+                    'chatAccountId', $5::uuid
+                )
+             )`,
+            [
+                projectId,
+                requestResult.rows[0].id,
+                requestKey,
+                project.conversation_id,
+                project.selected_chat_account_id
             ]
         );
 

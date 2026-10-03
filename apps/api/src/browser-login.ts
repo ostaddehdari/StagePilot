@@ -453,20 +453,55 @@ export async function startAccountBrowserLogin(
             target =
                 targetUrl;
 
-        } else if (
-            targetUrl === 'https://chatgpt.com/'
-            ||
-            targetUrl === 'https://chatgpt.com'
-        ) {
-
-            target =
-                'https://chatgpt.com/';
-
         } else {
 
-            throw new Error(
-                'INVALID_LOGIN_TARGET'
-            );
+            let parsed: URL;
+
+            try {
+
+                parsed =
+                    new URL(
+                        targetUrl
+                    );
+
+            } catch {
+
+                throw new Error(
+                    'INVALID_LOGIN_TARGET'
+                );
+
+            }
+
+            const host =
+                parsed.hostname
+                    .toLowerCase();
+
+            if (
+                parsed.protocol !== 'https:'
+                ||
+                (
+                    host !== 'chatgpt.com'
+                    &&
+                    host !== 'www.chatgpt.com'
+                    &&
+                    !host.endsWith('.chatgpt.com')
+                )
+                ||
+                parsed.username
+                ||
+                parsed.password
+            ) {
+
+                throw new Error(
+                    'INVALID_LOGIN_TARGET'
+                );
+
+            }
+
+            parsed.hash = '';
+
+            target =
+                parsed.href;
 
         }
 

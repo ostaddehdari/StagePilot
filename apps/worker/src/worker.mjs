@@ -11,9 +11,11 @@ function emit() {
 
             service: 'stagepilot-worker',
 
-            stage: 'S01',
+            stage: 'S07',
 
             work: 'W02',
+
+            completionPackage: 'stage72',
 
             timestamp: new Date().toISOString()
 

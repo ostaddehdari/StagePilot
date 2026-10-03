@@ -1,730 +1,163 @@
 import Link from 'next/link';
 
-
 import {
-    createProjectAction
+    createProjectAction,
+    deleteProjectAction,
+    updateProjectAction
 } from './actions';
 
-
-import {
-    loadProjects
-} from '../../../lib/projects';
+import { loadProjects } from '../../../lib/projects';
+import type { ProjectListItem } from '../../../lib/projects';
 
 
-import type {
-    ProjectListItem
-} from '../../../lib/projects';
-
-
-export const dynamic =
-    'force-dynamic';
-
+export const dynamic = 'force-dynamic';
 
 type ProjectsPageProps = {
-
-    searchParams: Promise<{
-
-        error?: string;
-
-    }>;
-
+    searchParams: Promise<{ error?: string; success?: string }>;
 };
 
-
-function numberFormat(
-    value: number
-) {
-
-    return new Intl.NumberFormat(
-        'fa-IR'
-    ).format(
-        value
-    );
-
+function numberFormat(value: number) {
+    return new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 1 }).format(value);
 }
 
-
-function statusLabel(
-    status: string
-) {
-
-    const labels:
-        Record<string, string> = {
-
-        draft:
-            'پیش‌نویس',
-
-        active:
-            'فعال',
-
-        paused:
-            'متوقف',
-
-        completed:
-            'تکمیل‌شده'
-
-    };
-
-
-    return labels[status]
-        ??
-        status;
-
+function statusLabel(status: string) {
+    return ({
+        draft: 'پیش‌نویس',
+        active: 'فعال',
+        paused: 'متوقف',
+        completed: 'تکمیل‌شده'
+    } as Record<string, string>)[status] ?? status;
 }
 
-
-export default async function ProjectsPage({
-
-    searchParams
-
-}: ProjectsPageProps) {
-
-    const params =
-        await searchParams;
-
-
+export default async function ProjectsPage({ searchParams }: ProjectsPageProps) {
+    const params = await searchParams;
     let projects: ProjectListItem[] = [];
-
-
     let apiError = false;
-
-
     try {
-
-        projects =
-            await loadProjects();
-
+        projects = await loadProjects();
     } catch {
-
-        apiError =
-            true;
-
+        apiError = true;
     }
 
-
     return (
-
-        <div>
-
-            <section
-                className="
-                    stagepilot-section-heading
-                "
-            >
-
+        <div className="stagepilot-page-stack">
+            <section className="stagepilot-section-heading stagepilot-heading-card">
                 <div>
-
-                    <div
-                        className="
-                            stagepilot-panel-eyebrow
-                        "
-                    >
-
-                        Projects
-
-                    </div>
-
-
-                    <h2>
-
-                        پروژه‌ها
-
-                    </h2>
-
-
+                    <div className="stagepilot-panel-eyebrow">PROJECT PORTFOLIO</div>
+                    <h2>پروژه‌ها</h2>
                     <p>
-
-                        پروژهٔ جدید را تعریف کن؛
-                        درخواست اولیه در Revision
-                        اول ذخیره می‌شود و در مراحل
-                        بعد به Stage و Work تبدیل
-                        خواهد شد.
-
+                        همهٔ پروژه‌ها، وضعیت برنامه‌ریزی، مخزن، Stageها و پیشرفت تأییدشده
+                        در یک نمای مدیریتی قابل کنترل هستند.
                     </p>
-
                 </div>
-
-
-                <div
-                    className="
-                        stagepilot-section-count
-                    "
-                >
-
-                    {
-                        numberFormat(
-                            projects.length
-                        )
-                    }
-
-                    <span>
-                        پروژه
-                    </span>
-
+                <div className="stagepilot-heading-actions">
+                    <div className="stagepilot-section-count">
+                        {numberFormat(projects.length)}<span>پروژه</span>
+                    </div>
+                    <details className="stagepilot-create-drawer">
+                        <summary className="btn stagepilot-primary-button">＋ پروژهٔ جدید</summary>
+                        <div className="stagepilot-drawer-panel">
+                            <div className="stagepilot-drawer-heading">
+                                <div><span>NEW PROJECT</span><h3>ایده را ثبت کنید</h3></div>
+                                <p>پس از ثبت، گفت‌وگوی تحلیل ایده و ساخت پروپوزال آغاز می‌شود.</p>
+                            </div>
+                            <form action={createProjectAction} className="stagepilot-form-grid">
+                                <label>
+                                    <span>نام پروژه</span>
+                                    <input name="name" required minLength={2} maxLength={160} placeholder="مثلاً سامانه مدیریت محتوای هوشمند" />
+                                </label>
+                                <label>
+                                    <span>شناسه انگلیسی</span>
+                                    <input name="slug" dir="ltr" pattern="[a-z0-9][a-z0-9-]{2,62}" placeholder="smart-content-platform" />
+                                </label>
+                                <label className="stagepilot-form-wide">
+                                    <span>توضیح کوتاه</span>
+                                    <textarea name="description" rows={2} maxLength={5000} placeholder="مسئله و هدف کلی پروژه" />
+                                </label>
+                                <label className="stagepilot-form-wide">
+                                    <span>ایده و نیازمندی اولیه</span>
+                                    <textarea name="requestText" rows={6} minLength={10} maxLength={30000} required placeholder="ایده، کاربران، محدودیت‌ها و نتیجه‌ای که انتظار دارید..." />
+                                </label>
+                                <div className="stagepilot-form-actions stagepilot-form-wide">
+                                    <button type="submit" className="btn stagepilot-primary-button">ثبت و شروع تحلیل ایده</button>
+                                </div>
+                            </form>
+                        </div>
+                    </details>
                 </div>
-
             </section>
 
-
-            {
-                params.error
-                ===
-                'create'
-                &&
-                (
-
-                    <div
-                        className="
-                            alert
-                            alert-danger
-                            mt-4
-                        "
-                    >
-
-                        ایجاد پروژه انجام نشد.
-                        نام، شناسهٔ پروژه و متن
-                        درخواست را بررسی کن.
-
-                    </div>
-
-                )
-            }
-
-
-            {
-                apiError
-                &&
-                (
-
-                    <div
-                        className="
-                            alert
-                            alert-warning
-                            mt-4
-                        "
-                    >
-
-                        API پروژه‌ها در دسترس نیست.
-
-                    </div>
-
-                )
-            }
-
-
-            <section
-                className="
-                    row
-                    g-4
-                    mt-1
-                "
-            >
-
-                <div
-                    className="
-                        col-12
-                        col-xxl-5
-                    "
-                >
-
-                    <div
-                        className="
-                            stagepilot-panel
-                            stagepilot-project-create
-                        "
-                    >
-
-                        <div
-                            className="
-                                stagepilot-panel-header
-                            "
-                        >
-
-                            <div>
-
-                                <div
-                                    className="
-                                        stagepilot-panel-eyebrow
-                                    "
-                                >
-
-                                    New Project
-
-                                </div>
-
-
-                                <h3>
-
-                                    ایجاد پروژهٔ جدید
-
-                                </h3>
-
-                            </div>
-
-                        </div>
-
-
-                        <form
-                            action={
-                                createProjectAction
-                            }
-                            className="
-                                stagepilot-form
-                            "
-                        >
-
-                            <div>
-
-                                <label
-                                    className="
-                                        form-label
-                                    "
-                                    htmlFor="name"
-                                >
-
-                                    نام پروژه
-
-                                </label>
-
-
-                                <input
-                                    id="name"
-                                    name="name"
-                                    className="
-                                        form-control
-                                    "
-                                    required
-                                    minLength={2}
-                                    maxLength={160}
-                                    placeholder="مثلاً سیستم مدیریت محتوای هوشمند"
-                                />
-
-                            </div>
-
-
-                            <div>
-
-                                <label
-                                    className="
-                                        form-label
-                                    "
-                                    htmlFor="slug"
-                                >
-
-                                    شناسهٔ انگلیسی
-
-                                </label>
-
-
-                                <input
-                                    id="slug"
-                                    name="slug"
-                                    className="
-                                        form-control
-                                        font-monospace
-                                    "
-                                    dir="ltr"
-                                    minLength={3}
-                                    maxLength={63}
-                                    pattern="[a-zA-Z0-9][a-zA-Z0-9-]{2,62}"
-                                    placeholder="my-project"
-                                />
-
-
-                                <div
-                                    className="
-                                        form-text
-                                    "
-                                >
-
-                                    اختیاری؛ در صورت
-                                    خالی‌بودن خودکار ساخته
-                                    می‌شود.
-
-                                </div>
-
-                            </div>
-
-
-                            <div>
-
-                                <label
-                                    className="
-                                        form-label
-                                    "
-                                    htmlFor="description"
-                                >
-
-                                    توضیح کوتاه
-
-                                </label>
-
-
-                                <textarea
-                                    id="description"
-                                    name="description"
-                                    className="
-                                        form-control
-                                    "
-                                    rows={3}
-                                    maxLength={5000}
-                                    placeholder="هدف کلی پروژه را کوتاه توضیح بده."
-                                />
-
-                            </div>
-
-
-                            <div>
-
-                                <label
-                                    className="
-                                        form-label
-                                    "
-                                    htmlFor="requestText"
-                                >
-
-                                    درخواست اصلی پروژه
-
-                                </label>
-
-
-                                <textarea
-                                    id="requestText"
-                                    name="requestText"
-                                    className="
-                                        form-control
-                                        stagepilot-request-input
-                                    "
-                                    rows={9}
-                                    required
-                                    minLength={10}
-                                    maxLength={30000}
-                                    placeholder="تمام خواسته‌ها، محدودیت‌ها و نتیجه‌ای که از پروژه انتظار داری را اینجا بنویس..."
-                                />
-
-
-                                <div
-                                    className="
-                                        form-text
-                                    "
-                                >
-
-                                    این متن بدون تغییر
-                                    به‌عنوان Revision 1
-                                    نگهداری خواهد شد.
-
-                                </div>
-
-                            </div>
-
-
-                            <button
-                                type="submit"
-                                className="
-                                    btn
-                                    btn-dark
-                                    stagepilot-primary-button
-                                "
-                            >
-
-                                ایجاد پروژه و ذخیرهٔ درخواست
-
-                            </button>
-
-                        </form>
-
-                    </div>
-
+            {params.success && <div className="alert alert-success">عملیات پروژه با موفقیت انجام شد.</div>}
+            {params.error && <div className="alert alert-danger">عملیات پروژه انجام نشد. داده‌ها و وابستگی‌ها را بررسی کنید.</div>}
+            {apiError && <div className="alert alert-warning">API پروژه‌ها در دسترس نیست.</div>}
+
+            <section className="stagepilot-panel stagepilot-table-panel">
+                <div className="stagepilot-panel-header">
+                    <div><div className="stagepilot-panel-eyebrow">ALL PROJECTS</div><h3>فهرست پروژه‌ها</h3></div>
+                    <span className="stagepilot-live-pill">همگام با پایگاه داده</span>
                 </div>
 
-
-                <div
-                    className="
-                        col-12
-                        col-xxl-7
-                    "
-                >
-
-                    <div
-                        className="
-                            stagepilot-panel
-                            h-100
-                        "
-                    >
-
-                        <div
-                            className="
-                                stagepilot-panel-header
-                            "
-                        >
-
-                            <div>
-
-                                <div
-                                    className="
-                                        stagepilot-panel-eyebrow
-                                    "
-                                >
-
-                                    Workspace
-
-                                </div>
-
-
-                                <h3>
-
-                                    پروژه‌های من
-
-                                </h3>
-
-                            </div>
-
-                        </div>
-
-
-                        {
-                            projects.length
-                            ===
-                            0
-
-                            ? (
-
-                                <div
-                                    className="
-                                        stagepilot-project-empty
-                                    "
-                                >
-
-                                    <div
-                                        className="
-                                            stagepilot-project-empty-mark
-                                        "
-                                    >
-
-                                        +
-
-                                    </div>
-
-
-                                    <h4>
-
-                                        هنوز پروژه‌ای ایجاد نشده
-
-                                    </h4>
-
-
-                                    <p>
-
-                                        اولین پروژه را از فرم
-                                        همین صفحه بساز.
-
-                                    </p>
-
-                                </div>
-
-                            )
-
-                            : (
-
-                                <div
-                                    className="
-                                        stagepilot-project-list
-                                    "
-                                >
-
-                                    {
-                                        projects.map(
-                                            project => (
-
-                                                <Link
-                                                    href={
-                                                        `/projects/${project.id}`
-                                                    }
-                                                    key={
-                                                        project.id
-                                                    }
-                                                    className="
-                                                        stagepilot-project-card
-                                                    "
-                                                >
-
-                                                    <div
-                                                        className="
-                                                            stagepilot-project-card-top
-                                                        "
-                                                    >
-
-                                                        <div>
-
-                                                            <div
-                                                                className="
-                                                                    stagepilot-project-slug
-                                                                "
-                                                            >
-
-                                                                {
-                                                                    project.slug
-                                                                }
-
-                                                            </div>
-
-
-                                                            <h4>
-
-                                                                {
-                                                                    project.name
-                                                                }
-
-                                                            </h4>
-
-                                                        </div>
-
-
-                                                        <span
-                                                            className="
-                                                                stagepilot-project-status
-                                                            "
-                                                        >
-
-                                                            {
-                                                                statusLabel(
-                                                                    project.status
-                                                                )
-                                                            }
-
-                                                        </span>
-
-                                                    </div>
-
-
-                                                    <p>
-
-                                                        {
-                                                            project.description
-                                                            ||
-                                                            'بدون توضیح کوتاه'
-                                                        }
-
-                                                    </p>
-
-
-                                                    <div
-                                                        className="
-                                                            stagepilot-progress-row
-                                                        "
-                                                    >
-
-                                                        <div
-                                                            className="
-                                                                stagepilot-progress-track
-                                                            "
-                                                        >
-
-                                                            <div
-                                                                className="
-                                                                    stagepilot-progress-value
-                                                                "
-                                                                style={{
-                                                                    width:
-                                                                        `${Math.min(
-                                                                            100,
-                                                                            Math.max(
-                                                                                0,
-                                                                                project.progress_percent
-                                                                            )
-                                                                        )}%`
-                                                                }}
-                                                            />
-
-                                                        </div>
-
-
-                                                        <strong>
-
-                                                            {
-                                                                numberFormat(
-                                                                    project.progress_percent
-                                                                )
-                                                            }
-
-                                                            ٪
-
-                                                        </strong>
-
-                                                    </div>
-
-
-                                                    <div
-                                                        className="
-                                                            stagepilot-project-meta
-                                                        "
-                                                    >
-
-                                                        <span>
-
-                                                            Stage:
-
-                                                            {' '}
-
-                                                            {
-                                                                numberFormat(
-                                                                    project.stage_count
-                                                                )
-                                                            }
-
-                                                        </span>
-
-
-                                                        <span>
-
-                                                            Work:
-
-                                                            {' '}
-
-                                                            {
-                                                                numberFormat(
-                                                                    project.work_count
-                                                                )
-                                                            }
-
-                                                        </span>
-
-
-                                                        <span>
-
-                                                            Revision:
-
-                                                            {' '}
-
-                                                            {
-                                                                numberFormat(
-                                                                    project.current_plan_revision
-                                                                )
-                                                            }
-
-                                                        </span>
-
-                                                    </div>
-
-                                                </Link>
-
-                                            )
-                                        )
-                                    }
-
-                                </div>
-
-                            )
-                        }
-
+                {projects.length === 0 ? (
+                    <div className="stagepilot-project-empty">
+                        <div className="stagepilot-project-empty-mark">P</div>
+                        <h4>هنوز پروژه‌ای ثبت نشده</h4>
+                        <p>دکمهٔ «پروژهٔ جدید» را بزنید و ایده را وارد کنید.</p>
                     </div>
-
-                </div>
-
+                ) : (
+                    <div className="table-responsive">
+                        <table className="table stagepilot-data-table align-middle">
+                            <thead><tr><th>پروژه</th><th>وضعیت</th><th>Stage / Work</th><th>پیشرفت معتبر</th><th>مخزن</th><th>عملیات</th></tr></thead>
+                            <tbody>
+                                {projects.map(project => {
+                                    const settings = project.settings ?? {};
+                                    const repositoryName = String(settings.repositoryName ?? '—');
+                                    return (
+                                        <tr key={project.id}>
+                                            <td>
+                                                <div className="stagepilot-table-title">{project.name}</div>
+                                                <code>{project.slug}</code>
+                                                <div className="stagepilot-table-description">{project.description || 'بدون توضیح کوتاه'}</div>
+                                            </td>
+                                            <td><span className={`stagepilot-state-badge state-${project.status}`}>{statusLabel(project.status)}</span></td>
+                                            <td><strong>{numberFormat(project.stage_count)}</strong><span className="stagepilot-table-separator">/</span><strong>{numberFormat(project.work_count)}</strong></td>
+                                            <td className="stagepilot-progress-cell">
+                                                <div className="stagepilot-progress-track"><span style={{ width: `${Math.min(100, project.progress_percent)}%` }} /></div>
+                                                <small>{numberFormat(project.progress_percent)}٪</small>
+                                            </td>
+                                            <td><code>{repositoryName}</code></td>
+                                            <td>
+                                                <div className="stagepilot-row-actions">
+                                                    <Link href={`/projects/${project.id}`} className="btn btn-sm btn-dark">مرکز کنترل</Link>
+                                                    <Link href={`/projects/${project.id}/planning`} className="btn btn-sm btn-outline-primary">پروپوزال</Link>
+                                                    <details className="stagepilot-row-menu">
+                                                        <summary className="btn btn-sm btn-outline-secondary">ویرایش</summary>
+                                                        <form action={updateProjectAction.bind(null, project.id)} className="stagepilot-inline-editor">
+                                                            <label>نام<input name="name" defaultValue={project.name} required /></label>
+                                                            <label>شناسه<input name="slug" dir="ltr" defaultValue={project.slug} required /></label>
+                                                            <label>توضیح<textarea name="description" rows={2} defaultValue={project.description ?? ''} /></label>
+                                                            <label>نام مخزن<input name="repositoryName" dir="ltr" defaultValue={repositoryName === '—' ? '' : repositoryName} /></label>
+                                                            <label>حالت چت<select name="chatMode" defaultValue={String(settings.chatMode ?? 'existing')}><option value="existing">ثبت آدرس چت موجود</option><option value="new">ساخت چت جدید</option></select></label>
+                                                            <label>وضعیت<select name="status" defaultValue={project.status}><option value="draft">پیش‌نویس</option><option value="active">فعال</option><option value="paused">متوقف</option><option value="completed">تکمیل‌شده</option></select></label>
+                                                            <button className="btn btn-sm btn-primary" type="submit">ذخیره</button>
+                                                        </form>
+                                                    </details>
+                                                    <details className="stagepilot-row-menu danger">
+                                                        <summary className="btn btn-sm btn-outline-danger">حذف</summary>
+                                                        <div className="stagepilot-delete-confirm">
+                                                            <p>پروژه از فهرست حذف می‌شود؛ تاریخچه و شواهد برای بازیابی حفظ خواهند شد.</p>
+                                                            <form action={deleteProjectAction.bind(null, project.id)}><button type="submit" className="btn btn-sm btn-danger">تأیید حذف</button></form>
+                                                        </div>
+                                                    </details>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
             </section>
-
         </div>
-
     );
-
 }

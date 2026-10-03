@@ -42,6 +42,24 @@ export function Topbar() {
                 "
             >
 
+                <div className="stagepilot-topbar-health d-none d-lg-flex">
+                    <span />
+                    <div>
+                        <strong>سامانه فعال</strong>
+                        <small>پایش لحظه‌ای</small>
+                    </div>
+                </div>
+
+
+                <button
+                    type="button"
+                    className="stagepilot-notification-button"
+                    aria-label="اعلان‌ها"
+                >
+                    <span>۰</span>
+                    ◌
+                </button>
+
                 <div
                     className="
                         d-none

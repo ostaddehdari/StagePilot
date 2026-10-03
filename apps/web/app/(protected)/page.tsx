@@ -160,7 +160,7 @@ export default async function DashboardPage() {
                         "
                     >
 
-                        Stage 1 Complete
+                        Stage 7.2 Completion Package
 
                     </div>
 
@@ -178,8 +178,8 @@ export default async function DashboardPage() {
                         این پنل، وضعیت پروژه‌ها،
                         Stageها، Workها، پرامپت‌ها،
                         اسکریپت‌ها و اجرای سرور را
-                        در یک مسیر واحد نگهداری
-                        خواهد کرد.
+                        در یک مسیر واحد نگهداری،
+                        پایش و قابل پیگیری می‌کند.
 
                     </p>
 

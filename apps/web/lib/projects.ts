@@ -10,6 +10,8 @@ export type ProjectListItem = {
 
     status: string;
 
+    settings?: Record<string, unknown>;
+
     current_plan_revision: number;
 
     stage_count: number;
@@ -271,6 +273,63 @@ export async function createProjectRequest(
 
     return body.project as ProjectListItem;
 
+}
+
+
+async function projectMutation(
+    path: string,
+    init: RequestInit
+) {
+    const response = await fetch(
+        `${apiBase()}${path}`,
+        {
+            ...init,
+            headers: {
+                'x-stagepilot-internal-key': internalKey(),
+                ...(init.headers ?? {})
+            },
+            cache: 'no-store',
+            signal: AbortSignal.timeout(15_000)
+        }
+    );
+    const body = await response.json();
+    if (!response.ok) {
+        throw new Error(body?.message ?? `PROJECT_API_FAILED_${response.status}`);
+    }
+    return body;
+}
+
+
+export async function updateProjectRequest(
+    id: string,
+    payload: {
+        name: string;
+        slug: string;
+        description: string;
+        status: string;
+        repositoryName: string;
+        chatMode: string;
+    }
+) {
+    const body = await projectMutation(
+        `/projects/${encodeURIComponent(id)}`,
+        {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(payload)
+        }
+    );
+    return body.project;
+}
+
+
+export async function deleteProjectRequest(
+    id: string
+) {
+    return projectMutation(
+        `/projects/${encodeURIComponent(id)}`,
+        { method: 'DELETE' }
+    );
 }
 
 

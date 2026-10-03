@@ -157,6 +157,7 @@ export function buildManagerPrompt({
 Return exactly one JSON object.
 
 Allowed responseType values:
+- project_plan (only for PROMPT_TYPE project_plan)
 - script_batch
 - report_only
 - decision_required
@@ -202,7 +203,8 @@ Rules:
 5. dependsOn contains script order numbers only.
 6. Management/diagnostic work is not project progress.
 7. If essential information is missing, use decision_required.
-8. Do not include Markdown fences around the JSON object.`
+8. Do not include Markdown fences around the JSON object.
+9. For PROMPT_TYPE project_plan, return responseType project_plan with a plan using schemaVersion stagepilot.project-plan.v1; every Stage and Work requires acceptanceCriteria and Work dependencies must be acyclic.`
     );
 
 

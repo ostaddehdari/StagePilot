@@ -7,10 +7,12 @@
     "test:once": "node src/worker.mjs --once",
     "start": "node src/worker.mjs",
     "browser:lock-test": "node browser/lock-selftest.mjs",
+    "browser:capacity-test": "node browser/browser-capacity-selftest.mjs",
     "browser:smoke": "node browser/smoke.mjs",
     "browser:login": "node browser/login-session.mjs",
     "browser:validate-test": "node browser/validator-selftest.mjs",
-    "browser:headless": "node browser/headless-session.mjs"
+    "browser:headless": "node browser/headless-session.mjs",
+    "manager:plan-test": "node manager/project-plan-contract-selftest.mjs"
   },
   "dependencies": {
     "bullmq": "6.3.9",

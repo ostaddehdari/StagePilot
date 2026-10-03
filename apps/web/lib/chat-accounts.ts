@@ -314,6 +314,59 @@ export async function createChatAccountRequest(
 }
 
 
+async function accountMutation(
+    path: string,
+    init: RequestInit
+) {
+    const response = await fetch(
+        `${apiBase()}${path}`,
+        {
+            ...init,
+            headers: {
+                'x-stagepilot-internal-key': internalKey(),
+                ...(init.headers ?? {})
+            },
+            cache: 'no-store',
+            signal: AbortSignal.timeout(15_000)
+        }
+    );
+    const body = await response.json();
+    if (!response.ok) {
+        throw new Error(body?.message ?? `CHAT_ACCOUNT_API_FAILED_${response.status}`);
+    }
+    return body;
+}
+
+
+export async function updateChatAccountRequest(
+    id: string,
+    payload: {
+        label: string;
+        note: string;
+    }
+) {
+    const body = await accountMutation(
+        `/chat-accounts/${encodeURIComponent(id)}`,
+        {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(payload)
+        }
+    );
+    return body.account;
+}
+
+
+export async function deleteChatAccountRequest(
+    id: string
+) {
+    return accountMutation(
+        `/chat-accounts/${encodeURIComponent(id)}`,
+        { method: 'DELETE' }
+    );
+}
+
+
 export type ChatAccountBrowserLogin = {
 
     status: string;

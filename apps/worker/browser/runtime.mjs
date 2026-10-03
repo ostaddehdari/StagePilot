@@ -15,6 +15,10 @@ import {
     acquireProfileLock
 } from './profile-lock.mjs';
 
+import {
+    acquireBrowserCapacity
+} from './browser-capacity.mjs';
+
 
 const EXECUTABLE =
     process.env
@@ -91,6 +95,29 @@ export async function launchHeadlessBrowser({
         );
 
 
+    let capacity;
+
+
+    try {
+
+        capacity =
+            await acquireBrowserCapacity({
+                profileKey,
+                ...metadata
+            });
+
+    } catch (error) {
+
+        await lock.release()
+            .catch(
+                () => {}
+            );
+
+        throw error;
+
+    }
+
+
     let browser =
         null;
 
@@ -114,6 +141,12 @@ export async function launchHeadlessBrowser({
 
 
             await lock.release()
+                .catch(
+                    () => {}
+                );
+
+
+            await capacity.release()
                 .catch(
                     () => {}
                 );
@@ -183,6 +216,9 @@ export async function launchHeadlessBrowser({
 
             lockPath:
                 lock.lockPath,
+
+            capacitySlot:
+                capacity.slot,
 
             async close() {
 

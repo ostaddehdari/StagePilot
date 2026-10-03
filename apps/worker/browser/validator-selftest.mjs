@@ -1,4 +1,5 @@
 import {
+    mkdtemp,
     rm
 } from 'node:fs/promises';
 
@@ -9,8 +10,8 @@ import {
 
 
 import {
-    launchHeadlessBrowser
-} from './runtime.mjs';
+    tmpdir
+} from 'node:os';
 
 
 import {
@@ -18,20 +19,43 @@ import {
 } from './chatgpt-validator.mjs';
 
 
-const PROFILE_ROOT =
-    process.env
-        .STAGEPILOT_BROWSER_PROFILE_ROOT;
+const SELFTEST_ROOT =
+    await mkdtemp(
+        join(
+            tmpdir(),
+            'stagepilot-browser-validator-'
+        )
+    );
+
+
+process.env.STAGEPILOT_BROWSER_PROFILE_ROOT =
+    join(
+        SELFTEST_ROOT,
+        'profiles'
+    );
+
+
+process.env.STAGEPILOT_BROWSER_LOCK_ROOT =
+    join(
+        SELFTEST_ROOT,
+        'locks'
+    );
+
+
+process.env.STAGEPILOT_BROWSER_CAPACITY_ROOT =
+    join(
+        SELFTEST_ROOT,
+        'capacity'
+    );
+
+
+const {
+    launchHeadlessBrowser
+} = await import('./runtime.mjs');
 
 
 const profileKey =
     `validator-selftest-${Date.now()}-${process.pid}`;
-
-
-const profilePath =
-    join(
-        PROFILE_ROOT,
-        profileKey
-    );
 
 
 let runtime =
@@ -216,7 +240,7 @@ try {
 
 
     await rm(
-        profilePath,
+        SELFTEST_ROOT,
         {
             recursive:
                 true,

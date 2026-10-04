@@ -123,7 +123,7 @@ if rg -U 'keyboard\s*\.\s*insertText\s*\(' apps/worker/browser/chatgpt-adapter.m
 fi
 rg -q 'visibleRuntimeActivity' apps/worker/src/browser-transport.mjs \
     || fail 'visible browser runtime activity detection missing'
-rg -q "await visibleManager('stop', profileKey)" apps/worker/src/browser-transport.mjs \
+rg -Fq "await visibleManager('stop', profileKey)" apps/worker/src/browser-transport.mjs \
     || fail 'automatic visible browser handoff missing'
 if rg -q "new Error\\('CHATGPT_INTERVENTION_REQUIRED:VISIBLE_BROWSER_ACTIVE'\\)" apps/worker/src/browser-transport.mjs; then
     fail 'false visible-browser intervention guard is still present'

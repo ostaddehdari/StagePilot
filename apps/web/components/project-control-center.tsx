@@ -113,6 +113,19 @@ function safeText(value: unknown) {
     return typeof value === 'string' ? value : value == null ? '' : JSON.stringify(value, null, 2);
 }
 
+function promptWorkerError(prompt: Record<string, unknown>) {
+    const context = prompt.context_json && typeof prompt.context_json === 'object'
+        ? prompt.context_json as Record<string, unknown>
+        : {};
+    return safeText(
+        prompt.worker_error_detail
+        || prompt.worker_error_log
+        || context.workerErrorDetail
+        || prompt.worker_error
+        || prompt.last_error
+    );
+}
+
 
 function escapeHtml(value: unknown) {
     return String(value ?? '')
@@ -172,7 +185,8 @@ export function ProjectControlCenter({
     const [inspectors, setInspectors] = useState<InspectorTab[]>([]);
     const [activeInspector, setActiveInspector] = useState('chat');
     const [treeFullscreen, setTreeFullscreen] = useState(false);
-    const [showAllRequests, setShowAllRequests] = useState(false);
+    const [requestPage, setRequestPage] = useState(0);
+    const requestStripRef = useRef<HTMLDivElement>(null);
     const latestPlan = data.planning.plans[0] ?? null;
     const officialProposal = data.planning.officialProposal;
     const latestRequest = data.planning.promptRequests[0] ?? null;
@@ -186,7 +200,7 @@ export function ProjectControlCenter({
         ? ['created', 'retry', 'processing', 'sent', 'waiting_response'].includes(latestRequest.status)
         : false;
     const allAiRequests = data.automation.requests ?? [];
-    const visibleAiRequests = showAllRequests ? allAiRequests : allAiRequests.slice(0, 8);
+    const requestPageCount = Math.max(1, Math.ceil(allAiRequests.length / 4));
     const anyAiRequestActive = allAiRequests.some(item =>
         ['created', 'retry', 'processing', 'sent', 'waiting_response'].includes(item.status)
     );
@@ -200,6 +214,15 @@ export function ProjectControlCenter({
     const quillInstanceRef = useRef<Quill | null>(null);
 
     const endpoint = `/StagePilot/api/projects/${data.project.id}/control`;
+
+    function moveRequestPage(delta: number) {
+        const nextPage = Math.max(0, Math.min(requestPageCount - 1, requestPage + delta));
+        setRequestPage(nextPage);
+        const target = requestStripRef.current?.querySelector<HTMLElement>(
+            `[data-request-index="${nextPage * 4}"]`
+        );
+        target?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
+    }
 
     async function refresh(silent = false) {
         if (!silent) setBusy('refresh');
@@ -247,6 +270,10 @@ export function ProjectControlCenter({
     useEffect(() => {
         setProposalSource(defaultHtml);
     }, [defaultHtml]);
+
+    useEffect(() => {
+        if (requestPage >= requestPageCount) setRequestPage(requestPageCount - 1);
+    }, [requestPage, requestPageCount]);
 
     useEffect(() => {
         if (!treeFullscreen) return;
@@ -437,11 +464,15 @@ export function ProjectControlCenter({
             <section className="sp-ai-request-dock" aria-label="فهرست درخواست‌های هوش مصنوعی">
                 <div className="sp-ai-request-dock-head">
                     <div><i className="fa-solid fa-satellite-dish" /><span><strong>درخواست‌های ChatGPT</strong><small>{faNumber(allAiRequests.length)} رکورد اخیر این پروژه</small></span></div>
-                    {allAiRequests.length > 8 && <button type="button" onClick={() => setShowAllRequests(value => !value)}><i className={`fa-solid ${showAllRequests ? 'fa-chevron-up' : 'fa-chevron-down'}`} />{showAllRequests ? 'نمایش کمتر' : 'نمایش همه'}</button>}
+                    <div className="sp-ai-request-navigation">
+                        <button type="button" disabled={requestPage === 0} onClick={() => moveRequestPage(-1)} title="چهار درخواست جدیدتر"><i className="fa-solid fa-arrow-right" /> جدیدتر</button>
+                        <span>{faNumber(requestPage + 1)} / {faNumber(requestPageCount)}</span>
+                        <button type="button" disabled={requestPage >= requestPageCount - 1} onClick={() => moveRequestPage(1)} title="چهار درخواست قدیمی‌تر">قدیمی‌تر <i className="fa-solid fa-arrow-left" /></button>
+                    </div>
                 </div>
-                <div className="sp-ai-request-strip">
-                    {visibleAiRequests.length === 0 && <p className="sp-ai-request-empty">هنوز درخواستی برای هوش مصنوعی ثبت نشده است.</p>}
-                    {visibleAiRequests.map(request => {
+                <div className="sp-ai-request-strip" ref={requestStripRef}>
+                    {allAiRequests.length === 0 && <p className="sp-ai-request-empty">هنوز درخواستی برای هوش مصنوعی ثبت نشده است.</p>}
+                    {allAiRequests.map((request, requestIndex) => {
                         const history = Array.isArray(request.context_json?.transportHistory)
                             ? request.context_json.transportHistory as Array<Record<string, unknown>>
                             : [];
@@ -455,7 +486,7 @@ export function ProjectControlCenter({
                             : request.stage_title
                                 ? `${request.stage_key ?? ''} · ${request.stage_title}`
                                 : REQUEST_TYPE_LABELS[request.request_type] ?? request.request_type;
-                        return <article key={request.id} className={`sp-ai-request-card state-${request.status}`}>
+                        return <article key={request.id} data-request-index={requestIndex} className={`sp-ai-request-card state-${request.status}`}>
                             <header><span>{REQUEST_TYPE_LABELS[request.request_type] ?? request.request_type}</span><strong className={`state-${request.status}`}>{REQUEST_STATUS_LABELS[request.status] ?? request.status}</strong></header>
                             <Link href={`/archive/prompts/${request.id}`} title="مشاهده جزئیات درخواست"><b>{title}</b><code dir="ltr">{request.request_key}</code></Link>
                             <div className="sp-ai-request-last"><i className={`fa-solid ${active ? 'fa-spinner fa-spin' : request.status === 'completed' ? 'fa-circle-check' : 'fa-circle-exclamation'}`} /><span><small>آخرین مرحله</small><strong>{TRANSPORT_LABELS[stage] ?? stage}</strong></span><time>{faDate(stageAt)}</time></div>
@@ -620,7 +651,10 @@ export function ProjectControlCenter({
                             const inspector = inspectors.find(item => item.id === activeInspector);
                             if (!inspector) return null;
                             return <div className="sp-inspector-scroll"><div className="sp-inspector-summary"><strong>{safeText(inspector.data.node.node_key)}</strong><span>{safeText(inspector.data.node.status)}</span></div>
-                                <h4>دستورهای ساخته‌شده توسط AI</h4>{inspector.data.prompts.length === 0 ? <p className="text-muted">هنوز دستوری ثبت نشده است.</p> : inspector.data.prompts.map((prompt, index) => <details key={safeText(prompt.id)} open={index === 0}><summary>{safeText(prompt.request_key)} · {safeText(prompt.status)}</summary><pre>{safeText(prompt.prompt_text)}</pre>{prompt.raw_text ? <><h5>پاسخ AI</h5><pre>{safeText(prompt.raw_text)}</pre></> : null}</details>)}
+                                <h4>دستورهای ساخته‌شده توسط AI</h4>{inspector.data.prompts.length === 0 ? <p className="text-muted">هنوز دستوری ثبت نشده است.</p> : inspector.data.prompts.map((prompt, index) => {
+                                    const workerError = promptWorkerError(prompt);
+                                    return <details key={safeText(prompt.id)} open={index === 0}><summary>{safeText(prompt.request_key)} · {safeText(prompt.status)}</summary>{workerError && <div className="sp-inspector-worker-error"><span><i className="fa-solid fa-bug" /> خطای Worker</span><strong dir="ltr">{safeText(prompt.last_error || prompt.worker_error)}</strong><pre dir="ltr">{workerError}</pre></div>}<pre>{safeText(prompt.prompt_text)}</pre>{prompt.raw_text ? <><h5>پاسخ AI</h5><pre>{safeText(prompt.raw_text)}</pre></> : null}</details>;
+                                })}
                                 <h4>اجرا، تست و Git</h4>{inspector.data.attempts.map(attempt => <details key={safeText(attempt.id)}><summary>{safeText(attempt.run_key)} · {safeText(attempt.status)}</summary><pre>{safeText(attempt.test_command || attempt.result_json || attempt.error_text)}</pre><p>Commit: <code>{safeText(attempt.commit_sha) || '—'}</code></p></details>)}
                                 {inspector.data.runs.map(run => <details key={safeText(run.id)}><summary>{safeText(run.run_key)} · Exit {safeText(run.exit_code)}</summary><pre>{safeText(run.log || run.result_json)}</pre></details>)}
                             </div>;

@@ -181,6 +181,42 @@ export default async function PromptArchivePage({
                 </div>
 
 
+                {
+                    archive.workerErrors?.length > 0
+                    &&
+                    <div className="stagepilot-worker-error-stack">
+                        {
+                            archive.workerErrors.map(
+                                (
+                                    error: Record<string, unknown>,
+                                    index: number
+                                ) => (
+                                    <article
+                                        className="stagepilot-worker-error"
+                                        key={`${String(error.source)}-${index}`}
+                                    >
+                                        <div className="stagepilot-worker-error-title">
+                                            <span>
+                                                <i className="fa-solid fa-bug" />
+                                                خطای واقعی Worker
+                                            </span>
+                                            <code dir="ltr">{t(error.source)}</code>
+                                        </div>
+                                        <strong dir="ltr">{t(error.summary)}</strong>
+                                        {
+                                            typeof error.detail === 'string'
+                                            && error.detail.trim()
+                                            &&
+                                            <pre dir="ltr">{error.detail}</pre>
+                                        }
+                                    </article>
+                                )
+                            )
+                        }
+                    </div>
+                }
+
+
                 <pre
                     className="
                         stagepilot-code-block

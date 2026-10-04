@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-import { chooseReadyWork } from './work-processor.mjs';
+import { chooseReadyWork, serializeWorkerError } from './work-processor.mjs';
 
 const rows = [
     { id: 'w1', stage_id: 's1', work_key: 'S01-W01', status: 'completed', dependencies: [] },
@@ -23,10 +23,21 @@ assert.equal(
     null
 );
 
+const sampleError = Object.assign(new Error('WORKER_SAMPLE_FAILURE'), {
+    code: 'E_SAMPLE',
+    diagnostic: { phase: 'execution', safe: true }
+});
+const serializedError = JSON.parse(serializeWorkerError(sampleError));
+assert.equal(serializedError.message, 'WORKER_SAMPLE_FAILURE');
+assert.equal(serializedError.code, 'E_SAMPLE');
+assert.equal(serializedError.diagnostic.phase, 'execution');
+assert.match(serializedError.stack, /WORKER_SAMPLE_FAILURE/);
+
 process.stdout.write(`${JSON.stringify({
     ok: true,
     suite: 'work-control',
     exactWorkPriority: true,
     stagePriority: true,
-    unmetDependenciesBlocked: true
+    unmetDependenciesBlocked: true,
+    workerErrorStackCaptured: true
 })}\n`);

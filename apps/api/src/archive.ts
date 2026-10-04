@@ -233,6 +233,10 @@ export async function getPromptArchive(
                     pr.state_revision,
                     pr.status,
                     pr.send_attempts,
+                    pr.claimed_at,
+                    pr.claimed_by,
+                    pr.last_error,
+                    pr.next_attempt_at,
                     pr.sent_at,
                     pr.completed_at,
                     pr.created_at,
@@ -374,6 +378,41 @@ export async function getPromptArchive(
         );
 
 
+    const attemptsResult =
+        await db.query(
+            `
+                SELECT
+                    paa.id,
+                    paa.attempt,
+                    paa.status,
+                    paa.run_key,
+                    paa.workspace_path,
+                    paa.test_command,
+                    paa.commit_sha,
+                    paa.result_json,
+                    paa.error_text,
+                    paa.started_at,
+                    paa.completed_at,
+                    paa.created_at,
+                    COALESCE((
+                        SELECT string_agg(
+                            '[' || rl.stream || '] ' || rl.chunk,
+                            E'\n'
+                            ORDER BY rl.created_at, rl.stream, rl.sequence_no, rl.id
+                        )
+                        FROM runs rr
+                        INNER JOIN run_logs rl ON rl.run_id = rr.id
+                        WHERE rr.run_key = paa.run_key
+                          AND (rl.stream = 'worker:error' OR rl.stream LIKE '%stderr%')
+                    ), '') AS worker_error_log
+                FROM project_automation_attempts paa
+                WHERE paa.prompt_request_id = $1::uuid
+                ORDER BY paa.created_at, paa.attempt
+            `,
+            [promptId]
+        );
+
+
     const runsResult =
         await db.query(
             `
@@ -387,10 +426,28 @@ export async function getPromptArchive(
                     r.exit_code,
                     r.started_at,
                     r.finished_at,
+                    r.result_json,
                     r.created_at,
 
                     sc.filename
                         AS script_filename,
+
+                    paa.status
+                        AS attempt_status,
+
+                    paa.error_text
+                        AS worker_error,
+
+                    COALESCE((
+                        SELECT string_agg(
+                            '[' || rl.stream || '] ' || rl.chunk,
+                            E'\n'
+                            ORDER BY rl.created_at, rl.stream, rl.sequence_no, rl.id
+                        )
+                        FROM run_logs rl
+                        WHERE rl.run_id = r.id
+                          AND (rl.stream = 'worker:error' OR rl.stream LIKE '%stderr%')
+                    ), '') AS worker_error_log,
 
                     (
                         SELECT COUNT(*)::int
@@ -402,20 +459,25 @@ export async function getPromptArchive(
 
                 FROM runs r
 
-                INNER JOIN scripts sc
+                LEFT JOIN scripts sc
                     ON
                         sc.id = r.script_id
 
-                INNER JOIN script_batches sb
+                LEFT JOIN script_batches sb
                     ON
                         sb.id = sc.batch_id
 
-                INNER JOIN prompt_responses pres
+                LEFT JOIN prompt_responses pres
                     ON
                         pres.id = sb.prompt_response_id
 
+                LEFT JOIN project_automation_attempts paa
+                    ON
+                        paa.run_key = r.run_key
+
                 WHERE
                     pres.prompt_request_id = $1::uuid
+                    OR paa.prompt_request_id = $1::uuid
 
                 ORDER BY
                     r.created_at
@@ -424,6 +486,52 @@ export async function getPromptArchive(
                 promptId
             ]
         );
+
+
+    const workerErrors: Array<Record<string, unknown>> = [];
+    const seenErrors = new Set<string>();
+    const addWorkerError = (
+        source: string,
+        summary: unknown,
+        detail: unknown,
+        createdAt: unknown
+    ) => {
+        const summaryText = typeof summary === 'string' ? summary.trim() : '';
+        const detailText = typeof detail === 'string' ? detail.trim() : '';
+        if (!summaryText && !detailText) return;
+        const key = `${source}\u0000${summaryText}\u0000${detailText}`;
+        if (seenErrors.has(key)) return;
+        seenErrors.add(key);
+        workerErrors.push({
+            source,
+            summary: summaryText,
+            detail: detailText,
+            created_at: createdAt
+        });
+    };
+
+    addWorkerError(
+        'prompt_request',
+        promptResult.rows[0].last_error,
+        promptResult.rows[0].context_json?.workerErrorDetail,
+        promptResult.rows[0].completed_at ?? promptResult.rows[0].created_at
+    );
+    for (const attempt of attemptsResult.rows) {
+        addWorkerError(
+            `automation_attempt:${attempt.attempt}`,
+            attempt.error_text,
+            attempt.result_json?.errorDetail || attempt.worker_error_log,
+            attempt.completed_at ?? attempt.created_at
+        );
+    }
+    for (const run of runsResult.rows) {
+        addWorkerError(
+            `run:${run.run_key}`,
+            run.worker_error ?? run.result_json?.error,
+            run.worker_error_log || run.result_json?.errorDetail,
+            run.finished_at ?? run.created_at
+        );
+    }
 
 
     return {
@@ -437,8 +545,13 @@ export async function getPromptArchive(
         scripts:
             scriptsResult.rows,
 
+        attempts:
+            attemptsResult.rows,
+
         runs:
-            runsResult.rows
+            runsResult.rows,
+
+        workerErrors
 
     };
 

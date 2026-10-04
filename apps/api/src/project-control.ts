@@ -516,12 +516,32 @@ export async function getProjectNodeInspector(
     const condition = kind === 'stage' ? 'pr.stage_id = $2::uuid' : 'pr.work_id = $2::uuid';
     const prompts = await db.query(
         `SELECT pr.id, pr.request_key, pr.request_type, pr.prompt_text, pr.status,
-                pr.created_at, pres.raw_text, pres.parsed_json, pres.received_at
+                pr.last_error, pr.context_json, pr.created_at,
+                pres.raw_text, pres.parsed_json, pres.received_at,
+                paa.error_text AS worker_error,
+                paa.result_json->>'errorDetail' AS worker_error_detail,
+                paa.run_key,
+                COALESCE((
+                    SELECT string_agg(
+                        '[' || rl.stream || '] ' || rl.chunk,
+                        E'\n' ORDER BY rl.created_at, rl.stream, rl.sequence_no, rl.id
+                    )
+                    FROM runs rr
+                    INNER JOIN run_logs rl ON rl.run_id = rr.id
+                    WHERE rr.run_key = paa.run_key
+                      AND (rl.stream = 'worker:error' OR rl.stream LIKE '%stderr%')
+                ), '') AS worker_error_log
          FROM prompt_requests pr
          LEFT JOIN LATERAL (
              SELECT raw_text, parsed_json, received_at FROM prompt_responses
              WHERE prompt_request_id = pr.id ORDER BY received_at DESC LIMIT 1
          ) pres ON true
+         LEFT JOIN LATERAL (
+             SELECT error_text, result_json, run_key
+             FROM project_automation_attempts
+             WHERE prompt_request_id = pr.id
+             ORDER BY created_at DESC LIMIT 1
+         ) paa ON true
          WHERE pr.project_id = $1::uuid AND ${condition}
          ORDER BY pr.created_at DESC LIMIT 30`,
         [projectId, nodeId]

@@ -198,6 +198,31 @@ async function storeLog(db, runId, stream, value) {
     }
 }
 
+export function serializeWorkerError(error) {
+    const value = error && typeof error === 'object' ? error : { message: String(error) };
+    const seen = new WeakSet();
+    const payload = {
+        name: value.name ?? 'Error',
+        message: value.message ?? String(error),
+        code: value.code ?? null,
+        stack: value.stack ?? null,
+        diagnostic: value.diagnostic ?? null,
+        outcome: value.outcome ?? null,
+        cause: value.cause ?? null
+    };
+    try {
+        return JSON.stringify(payload, (_key, item) => {
+            if (item && typeof item === 'object') {
+                if (seen.has(item)) return '[Circular]';
+                seen.add(item);
+            }
+            return item;
+        }, 2).slice(0, 60_000);
+    } catch {
+        return String(value.stack ?? value.message ?? error).slice(0, 60_000);
+    }
+}
+
 async function recordWorkTransportProgress(db, promptRequest, progress) {
     const stage = String(progress?.stage ?? 'unknown').slice(0, 80);
     const at = String(progress?.at ?? new Date().toISOString());
@@ -512,16 +537,20 @@ export async function processAutomationProject(db, state) {
         return { projectId: project.id, workKey: work.work_key, commitSha: gitResult.commitSha };
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        const detail = error?.outcome ? JSON.stringify(error.outcome).slice(0, 60_000) : message;
+        const detail = serializeWorkerError(error);
         await storeLog(db, runId, 'worker:error', detail);
         await db.query(
             `UPDATE prompt_requests
              SET status = CASE WHEN status IN ('cancelled', 'blocked') THEN status ELSE 'failed' END,
                  completed_at = COALESCE(completed_at, now()), last_error = $2,
                  context_json = COALESCE(context_json, '{}'::jsonb)
-                    || jsonb_build_object('transportStage', 'failed', 'transportUpdatedAt', now()::text)
+                    || jsonb_build_object(
+                        'transportStage', 'failed',
+                        'transportUpdatedAt', now()::text,
+                        'workerErrorDetail', $3::text
+                    )
              WHERE id = $1::uuid`,
-            [promptRequest.id, message.slice(0, 4000)]
+            [promptRequest.id, message.slice(0, 4000), detail]
         );
         const terminal = attempt >= Number(state.max_work_attempts);
         await db.query(
@@ -533,9 +562,9 @@ export async function processAutomationProject(db, state) {
         );
         await db.query(
             `UPDATE runs SET status = 'failed', exit_code = 1, finished_at = now(),
-                 result_json = jsonb_build_object('error', $2::text)
+                 result_json = jsonb_build_object('error', $2::text, 'errorDetail', $3::text)
              WHERE id = $1::uuid`,
-            [runId, message.slice(0, 4000)]
+            [runId, message.slice(0, 4000), detail]
         );
         await db.query(
             `UPDATE works SET status = $2, updated_at = now(),

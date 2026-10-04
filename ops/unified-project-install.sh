@@ -158,6 +158,14 @@ rg -q 'controlProjectAutomationNode' apps/api/src/automation.ts \
     || fail 'Stage and Work controls missing'
 rg -q 'recordWorkTransportProgress' apps/worker/src/work-processor.mjs \
     || fail 'work request transport observability missing'
+rg -q 'serializeWorkerError' apps/worker/src/work-processor.mjs \
+    || fail 'detailed Worker error serialization missing'
+rg -q 'workerErrors' apps/api/src/archive.ts \
+    || fail 'Prompt archive Worker diagnostics missing'
+rg -q 'promptWorkerError' apps/web/components/project-control-center.tsx \
+    || fail 'AI command inspector Worker error panel missing'
+rg -q 'sp-ai-request-navigation' apps/web/components/project-control-center.tsx \
+    || fail 'four-card AI request navigation missing'
 rg -q 'DEPLOYMENT_INTERRUPTED_WORK_REQUEST_REVIEW_REQUIRED' database/migrations/022_work_request_control.sql \
     || fail 'interrupted work request safety migration missing'
 rg -Uq 'current_plan_revision\s*=\s*CASE\s+WHEN \$4::boolean THEN \$2::integer' apps/worker/src/planning-processor.mjs \
@@ -325,6 +333,10 @@ printf '%s\n' 'Stage and Work gradient controls: PASS'
 printf '%s\n' 'Project AI request command bar: PASS'
 printf '%s\n' 'Latest-only ChatGPT status: PASS'
 printf '%s\n' 'Interrupted work duplicate protection: PASS'
+printf '%s\n' 'Four-card AI request navigation: PASS'
+printf '%s\n' 'Prompt archive Worker diagnostics: PASS'
+printf '%s\n' 'AI command Worker error panel: PASS'
+printf '%s\n' 'Worker stack and diagnostic logging: PASS'
 printf '%s\n' 'Per-project GitHub credentials: PASS'
 printf '%s\n' 'STAGEPILOT_UNIFIED_PROJECT=PASS'
 printf 'Finished: %s\n' "$(date -u +%FT%TZ)"

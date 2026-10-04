@@ -128,6 +128,8 @@ rg -q "await visibleManager('stop', profileKey)" apps/worker/src/browser-transpo
 if rg -q "new Error\\('CHATGPT_INTERVENTION_REQUIRED:VISIBLE_BROWSER_ACTIVE'\\)" apps/worker/src/browser-transport.mjs; then
     fail 'false visible-browser intervention guard is still present'
 fi
+rg -q 'VISIBLE_BROWSER_AUTOMATIC_HANDOFF_QUEUED' database/migrations/021_visible_browser_handoff.sql \
+    || fail 'visible browser failed-request recovery missing'
 rg -q 'STAGEPILOT_PROFESSIONAL_PROPOSAL_V1' apps/api/src/planning.ts \
     || fail 'professional proposal prompt missing'
 rg -q 'STAGEPILOT_PROPOSAL_TO_PLAN_TREE_V1' apps/api/src/planning.ts \
@@ -181,6 +183,7 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/017_proposal_plan
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/018_chatgpt_frame_recovery.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/019_send_uncertain_recovery.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/020_plan_tree_visibility.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/021_visible_browser_handoff.sql
 
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c \
     "SELECT count(*) AS preserved_nonterminal_requests
@@ -235,6 +238,9 @@ BEGIN
     END IF;
     IF NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version = '020_plan_tree_visibility') THEN
         RAISE EXCEPTION 'migration 020_plan_tree_visibility missing';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version = '021_visible_browser_handoff') THEN
+        RAISE EXCEPTION 'migration 021_visible_browser_handoff missing';
     END IF;
     IF EXISTS (
         SELECT 1

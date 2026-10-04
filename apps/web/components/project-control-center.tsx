@@ -1,7 +1,9 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+
+import type Quill from 'quill';
 
 import type { loadProjectControlCenter } from '../lib/project-control';
 
@@ -52,6 +54,7 @@ const TRANSPORT_LABELS: Record<string, string> = {
     composer_ready: 'متن وارد شد',
     send_clicking: 'کلیک دکمه ارسال',
     send_confirmed: 'ارسال تأیید شد',
+    send_uncertain_recovery: 'بررسی ارسال بدون تکرار پیام',
     response_waiting: 'انتظار پاسخ ChatGPT',
     response_recovery: 'بازیابی پاسخ بدون ارسال مجدد',
     response_received: 'پاسخ دریافت شد',
@@ -152,6 +155,9 @@ export function ProjectControlCenter({
         [officialProposal]
     );
     const [proposalSource, setProposalSource] = useState(defaultHtml);
+    const [proposalEditorMode, setProposalEditorMode] = useState<'visual' | 'html' | 'preview'>('visual');
+    const quillHostRef = useRef<HTMLDivElement>(null);
+    const quillInstanceRef = useRef<Quill | null>(null);
 
     const endpoint = `/StagePilot/api/projects/${data.project.id}/control`;
 
@@ -201,6 +207,46 @@ export function ProjectControlCenter({
     useEffect(() => {
         setProposalSource(defaultHtml);
     }, [defaultHtml]);
+
+    useEffect(() => {
+        let cancelled = false;
+        let editor: Quill | null = null;
+        const start = async () => {
+            if (!quillHostRef.current || quillInstanceRef.current) return;
+            const QuillEditor = (await import('quill')).default;
+            if (cancelled || !quillHostRef.current) return;
+            editor = new QuillEditor(quillHostRef.current, {
+                theme: 'snow',
+                placeholder: 'متن پروپوزال رسمی را اینجا ویرایش کنید…',
+                modules: {
+                    toolbar: [
+                        [{ header: [1, 2, 3, false] }],
+                        ['bold', 'italic', 'underline', 'strike'],
+                        [{ color: [] }, { background: [] }],
+                        [{ list: 'ordered' }, { list: 'bullet' }],
+                        [{ align: [] }, { direction: 'rtl' }],
+                        ['blockquote', 'code-block', 'link'],
+                        ['clean']
+                    ]
+                }
+            });
+            quillInstanceRef.current = editor;
+            editor.root.innerHTML = proposalSource || '<p><br></p>';
+            editor.on('text-change', () => setProposalSource(editor?.root.innerHTML ?? ''));
+        };
+        void start();
+        return () => {
+            cancelled = true;
+            if (editor) editor.off('text-change');
+        };
+    }, []);
+
+    useEffect(() => {
+        const editor = quillInstanceRef.current;
+        if (!editor || proposalEditorMode !== 'visual') return;
+        if (editor.root.contains(document.activeElement)) return;
+        if (editor.root.innerHTML !== proposalSource) editor.root.innerHTML = proposalSource || '<p><br></p>';
+    }, [proposalEditorMode, proposalSource]);
 
     function selectTab(next: string) {
         setTab(next);
@@ -495,8 +541,18 @@ export function ProjectControlCenter({
                     <div className="sp-page-title"><div><span>OFFICIAL PROPOSAL</span><h2>پروپوزال رسمی و ساخت PLAN TREE</h2></div><div className="sp-inline-actions">{officialProposal && <button className="btn sp-primary" type="button" disabled={Boolean(busy) || requestActive} onClick={() => void command('plan-tree-generate', {}, 'پرامپت حرفه‌ای ساخت Stage و Work به ChatGPT ارسال شد.')}><i className="fa-solid fa-diagram-project" /> ساخت Stage و Work با ChatGPT</button>}</div></div>
                     {!officialProposal ? <div className="sp-card sp-empty-proposal"><i className="fa-solid fa-file-circle-plus" /><h3>پروپوزال رسمی هنوز انتخاب نشده</h3><p>در گفت‌وگو «ساخت پروپوزال با ChatGPT» را بزنید و سپس پاسخ مناسب را به پروپوزال رسمی تبدیل کنید.</p><button className="btn sp-primary" type="button" onClick={() => selectTab('workspace')}>رفتن به گفت‌وگو</button></div> : <div className="sp-proposal-grid">
                         <article className="sp-card sp-proposal-meta"><div><span>نسخه</span><strong>{faNumber(officialProposal.version)}</strong></div><div><span>وضعیت</span><strong>{officialProposal.status}</strong></div><div><span>عنوان</span><strong>{officialProposal.title}</strong></div><p>{officialProposal.summary}</p>{latestPlan && <small>آخرین PLAN TREE: نسخه {faNumber(latestPlan.version)} · {latestPlan.status}</small>}</article>
-                        <article className="sp-card sp-html-editor"><div className="sp-card-title"><i className="fa-solid fa-code" /><div><h3>ویرایشگر HTML</h3><p>کد پروپوزال رسمی را ویرایش و پیش‌نمایش ایزوله را بررسی کنید.</p></div></div><textarea dir="ltr" spellCheck={false} value={proposalSource} onChange={event => setProposalSource(event.target.value)} /><button className="btn sp-primary" type="button" disabled={Boolean(busy)} onClick={() => void command('proposal-html', { html: proposalSource }, 'نسخهٔ HTML پروپوزال رسمی ذخیره شد.')}><i className="fa-solid fa-floppy-disk" /> ذخیره HTML</button></article>
-                        <article className="sp-card sp-proposal-preview"><div className="sp-card-title"><i className="fa-solid fa-eye" /><div><h3>پیش‌نمایش امن</h3><p>اسکریپت‌های داخل HTML اجرا نمی‌شوند.</p></div></div><iframe title="پیش‌نمایش پروپوزال" sandbox="" srcDoc={proposalSource} /></article>
+                        <article className="sp-card sp-rich-proposal-editor">
+                            <div className="sp-card-title"><i className="fa-solid fa-pen-ruler" /><div><h3>ویرایشگر حرفه‌ای پروپوزال</h3><p>ویرایش دیداری شبیه Word، کد HTML و نتیجه نهایی را در یک محیط کنترل کنید.</p></div></div>
+                            <div className="sp-editor-modes" role="tablist" aria-label="حالت ویرایش پروپوزال">
+                                <button type="button" className={proposalEditorMode === 'visual' ? 'active' : ''} onClick={() => setProposalEditorMode('visual')}><i className="fa-solid fa-file-word" /> ویرایش دیداری</button>
+                                <button type="button" className={proposalEditorMode === 'html' ? 'active' : ''} onClick={() => setProposalEditorMode('html')}><i className="fa-solid fa-code" /> کد HTML</button>
+                                <button type="button" className={proposalEditorMode === 'preview' ? 'active' : ''} onClick={() => setProposalEditorMode('preview')}><i className="fa-solid fa-eye" /> نمایش نتیجه</button>
+                            </div>
+                            <div className={`sp-quill-shell ${proposalEditorMode === 'visual' ? '' : 'd-none'}`} dir="rtl"><div ref={quillHostRef} /></div>
+                            {proposalEditorMode === 'html' && <textarea className="sp-proposal-code" dir="ltr" spellCheck={false} value={proposalSource} onChange={event => setProposalSource(event.target.value)} />}
+                            {proposalEditorMode === 'preview' && <iframe className="sp-proposal-result" title="نمایش نتیجه پروپوزال" sandbox="" srcDoc={proposalSource} />}
+                            <div className="sp-editor-footer"><small>اسکریپت و کدهای ناامن هنگام ذخیره پذیرفته نمی‌شوند.</small><button className="btn sp-primary" type="button" disabled={Boolean(busy)} onClick={() => void command('proposal-html', { html: proposalSource }, 'نسخهٔ HTML پروپوزال رسمی ذخیره شد.')}><i className="fa-solid fa-floppy-disk" /> ذخیره پروپوزال</button></div>
+                        </article>
                     </div>}
                 </section>
             )}

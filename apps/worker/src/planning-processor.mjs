@@ -22,6 +22,7 @@ const TRANSPORT_MESSAGES = {
     composer_ready: 'متن درخواست در کادر پیام وارد شد.',
     send_clicking: 'دکمه ارسال ChatGPT در حال کلیک است.',
     send_confirmed: 'ارسال پیام به ChatGPT تأیید شد.',
+    send_uncertain_recovery: 'کلیک انجام شده است؛ بدون ارسال مجدد، وجود پیام و پاسخ بررسی می‌شود.',
     response_waiting: 'در انتظار تکمیل پاسخ ChatGPT هستیم.',
     response_recovery: 'پاسخ ارسال‌شده بدون ارسال دوباره در حال بازیابی است.',
     response_received: 'پاسخ کامل ChatGPT دریافت شد.',
@@ -35,7 +36,7 @@ async function recordTransportProgress(db, row, progress) {
     const entry = { ...progress, stage, at };
     const nextStatus = stage === 'completed'
         ? 'completed'
-        : stage === 'send_confirmed'
+        : ['send_confirmed', 'send_uncertain_recovery'].includes(stage)
         ? 'sent'
         : stage === 'response_waiting'
             ? 'waiting_response'
@@ -44,7 +45,11 @@ async function recordTransportProgress(db, row, progress) {
     await db.query(
         `UPDATE prompt_requests
          SET status = $2,
-             sent_at = CASE WHEN $3::text = 'send_confirmed' THEN COALESCE(sent_at, now()) ELSE sent_at END,
+             sent_at = CASE
+                WHEN $3::text IN ('send_confirmed', 'send_uncertain_recovery')
+                THEN COALESCE(sent_at, now())
+                ELSE sent_at
+             END,
              context_json = COALESCE(context_json, '{}'::jsonb) || jsonb_build_object(
                 'transportStage', $3::text,
                 'transportUpdatedAt', $4::text,
@@ -502,7 +507,12 @@ export async function processPlanningRequest(db, request) {
         const confirmedSend = [...history]
             .reverse()
             .find(item => item?.stage === 'send_confirmed');
-        const alreadySent = Boolean(row.sent_at || confirmedSend);
+        const alreadySent = Boolean(
+            row.sent_at
+            || confirmedSend
+            || row.context_json?.recoveryOnly === true
+            || row.context_json?.resendBlocked === true
+        );
         const recoveryConversationUrl = row.external_url
             ?? confirmedSend?.conversationUrl
             ?? null;

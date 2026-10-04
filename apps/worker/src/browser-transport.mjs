@@ -17,6 +17,12 @@ const RESPONSE_ROOT = process.env.STAGEPILOT_BROWSER_RESPONSE_ROOT
 const SESSION_ROOT = process.env.STAGEPILOT_BROWSER_SESSION_ROOT
     ?? '/opt/stagepilot/runtime/browser-sessions';
 
+export function classifySendOutcome(state) {
+    if (state === 'SENT_CONFIRMED') return 'confirmed';
+    if (state === 'SEND_UNCERTAIN') return 'response-only';
+    return 'failed';
+}
+
 function pidAlive(pid) {
     const value = Number(pid);
     if (!Number.isInteger(value) || value <= 0) return false;
@@ -242,22 +248,45 @@ export async function sendPromptAndWait({
         action: 'commit-send',
         operationId
     });
-    if (sent?.state?.state !== 'SENT_CONFIRMED') {
-        throw new Error(`CHATGPT_SEND_NOT_CONFIRMED:${sent?.state?.state ?? 'unknown'}`);
+    const sendState = sent?.state?.state ?? 'unknown';
+    const sendOutcome = classifySendOutcome(sendState);
+    if (sendOutcome === 'failed') {
+        throw new Error(`CHATGPT_SEND_NOT_CONFIRMED:${sendState}`);
     }
-    await progress('send_confirmed', {
-        conversationId: sent.state.conversationId ?? null,
-        conversationUrl: sent.state.conversationUrl ?? null
-    });
+    if (sendOutcome === 'confirmed') {
+        await progress('send_confirmed', {
+            conversationId: sent.state.conversationId ?? null,
+            conversationUrl: sent.state.conversationUrl ?? null
+        });
+    } else {
+        /*
+         * The click was persisted before it was performed, therefore an
+         * uncertain result must never be clicked again. Correlate the exact
+         * prompt in the conversation and recover its response instead.
+         */
+        await progress('send_uncertain_recovery', {
+            reason: sent?.state?.reason ?? 'send-confirmation-unavailable',
+            conversationId: sent?.state?.conversationId ?? null,
+            conversationUrl: sent?.state?.conversationUrl
+                ?? sent?.state?.observedUrl
+                ?? null,
+            recoveryOnly: true,
+            resendBlocked: true
+        });
+    }
 
     await mkdir(RESPONSE_ROOT, { recursive: true, mode: 0o700 });
     const responseStatePath = join(RESPONSE_ROOT, `${operationId}.json`);
-    await progress('response_waiting', { timeoutMs });
+    await progress('response_waiting', {
+        timeoutMs,
+        recoveryOnly: sendOutcome === 'response-only',
+        resendBlocked: sendOutcome === 'response-only'
+    });
     const waited = await adapterRequest(profileKey, {
         action: 'wait-response',
         operationId,
         expectedPromptText: promptText,
-        provisionalConversationId: sent.state.conversationId,
+        provisionalConversationId: sent?.state?.conversationId ?? null,
         responseStatePath,
         timeoutMs
     }, timeoutMs + 15_000);
@@ -267,15 +296,16 @@ export async function sendPromptAndWait({
     }
     await progress('response_received', {
         responseSha256: waited.response.responseSha256 ?? null,
-        conversationUrl: waited.response.observedUrl ?? sent.state.conversationUrl ?? null
+        conversationUrl: waited.response.observedUrl ?? sent?.state?.conversationUrl ?? null
     });
 
     return {
         text: waited.response.responseText,
         sha256: waited.response.responseSha256,
-        conversationId: waited.response.observedConversationId ?? sent.state.conversationId,
-        conversationUrl: waited.response.observedUrl ?? sent.state.conversationUrl,
-        responseStatePath
+        conversationId: waited.response.observedConversationId ?? sent?.state?.conversationId ?? null,
+        conversationUrl: waited.response.observedUrl ?? sent?.state?.conversationUrl ?? null,
+        responseStatePath,
+        recoveredFromUncertainSend: sendOutcome === 'response-only'
     };
 }
 

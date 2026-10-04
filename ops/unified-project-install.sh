@@ -75,6 +75,10 @@ set +a
 pg_dump --format=custom --file="$BACKUP_ROOT/database.dump" "$DATABASE_URL"
 chmod 600 "$BACKUP_ROOT/database.dump"
 
+if [[ "${STAGEPILOT_DISABLE_OPENSEARCH:-1}" == "1" ]]; then
+    bash ops/disable-opensearch.sh
+fi
+
 npm ci
 npm run build
 npm run manager:plan-test --workspace @stagepilot/worker
@@ -83,6 +87,7 @@ npm run automation:selftest --workspace @stagepilot/worker
 npm run browser:composer-test --workspace @stagepilot/worker
 npm run browser:runtime-guard-test --workspace @stagepilot/worker
 npm run browser:frame-recovery-test --workspace @stagepilot/worker
+npm run browser:send-uncertain-test --workspace @stagepilot/worker
 node --check apps/worker/browser/chatgpt-adapter.mjs
 node --check apps/worker/src/browser-transport.mjs
 node --check apps/worker/src/planning-processor.mjs
@@ -132,6 +137,10 @@ rg -q 'recoverPreviouslySentPrompt' apps/worker/src/planning-processor.mjs \
     || fail 'post-send response-only recovery missing'
 rg -q 'FRAME_REACQUIRING' apps/worker/browser/chatgpt-response-monitor.mjs \
     || fail 'detached Frame recovery missing'
+rg -q 'send_uncertain_recovery' apps/worker/src/browser-transport.mjs \
+    || fail 'uncertain send response-only recovery missing'
+rg -q "import\('quill'\)" apps/web/components/project-control-center.tsx \
+    || fail 'Quill visual proposal editor missing'
 if rg -U 'keyboard\s*\.\s*type\s*\(\s*text\b' apps/worker/browser/chatgpt-adapter.mjs; then
     fail 'unsafe multiline keyboard typing is present'
 fi
@@ -161,6 +170,7 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/015_unified_proje
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/016_chatgpt_exactly_once.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/017_proposal_plan_tree_workflow.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/018_chatgpt_frame_recovery.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/019_send_uncertain_recovery.sql
 
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c \
     "SELECT count(*) AS preserved_nonterminal_requests
@@ -210,6 +220,9 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version = '018_chatgpt_frame_recovery') THEN
         RAISE EXCEPTION 'migration 018_chatgpt_frame_recovery missing';
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version = '019_send_uncertain_recovery') THEN
+        RAISE EXCEPTION 'migration 019_send_uncertain_recovery missing';
+    END IF;
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE table_name = 'project_plan_versions' AND column_name = 'proposal_html'
@@ -256,6 +269,9 @@ printf '%s\n' 'Proposal-to-PLAN-TREE workflow: PASS'
 printf '%s\n' 'Nginx, Stage tests and GitHub prompt policy: PASS'
 printf '%s\n' 'Detached Frame response recovery: PASS'
 printf '%s\n' 'Post-send duplicate prevention: PASS'
+printf '%s\n' 'SEND_UNCERTAIN response-only recovery: PASS'
+printf '%s\n' 'Quill visual, HTML source and preview editor: PASS'
+printf '%s\n' 'OpenSearch disabled; PostgreSQL search retained: PASS'
 printf '%s\n' 'Per-project GitHub credentials: PASS'
 printf '%s\n' 'STAGEPILOT_UNIFIED_PROJECT=PASS'
 printf 'Finished: %s\n' "$(date -u +%FT%TZ)"

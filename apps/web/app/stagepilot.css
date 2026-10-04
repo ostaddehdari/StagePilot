@@ -3301,7 +3301,9 @@ select {
 .sp-chat-scroll,
 .sp-inspector-scroll,
 .sp-event-log,
-.sp-html-editor textarea {
+.sp-html-editor textarea,
+.sp-proposal-code,
+.sp-quill-shell .ql-editor {
     scrollbar-width: none;
     -ms-overflow-style: none;
 }
@@ -3312,7 +3314,9 @@ select {
 .sp-chat-scroll::-webkit-scrollbar,
 .sp-inspector-scroll::-webkit-scrollbar,
 .sp-event-log::-webkit-scrollbar,
-.sp-html-editor textarea::-webkit-scrollbar {
+.sp-html-editor textarea::-webkit-scrollbar,
+.sp-proposal-code::-webkit-scrollbar,
+.sp-quill-shell .ql-editor::-webkit-scrollbar {
     width: 0;
     height: 0;
 }
@@ -3571,6 +3575,20 @@ select {
 .sp-html-editor .btn { font-size: 9px; }
 .sp-proposal-preview { grid-column: 1 / -1; }
 .sp-proposal-preview iframe { width: 100%; min-height: 520px; border: 1px solid var(--sp-line); border-radius: 12px; background: #fff; }
+.sp-rich-proposal-editor { grid-column: 1 / -1; padding: 17px; overflow: hidden; }
+.sp-editor-modes { display: inline-flex; gap: 4px; margin: 14px 0 10px; padding: 4px; border: 1px solid #e3e8f0; border-radius: 12px; background: #f6f8fb; }
+.sp-editor-modes button { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border: 0; border-radius: 9px; color: #596579; background: transparent; font: inherit; font-size: 9px; cursor: pointer; }
+.sp-editor-modes button.active { color: #fff; background: linear-gradient(135deg, #4f46e5, #6366f1); box-shadow: 0 6px 15px rgba(79, 70, 229, .2); }
+.sp-quill-shell .ql-toolbar.ql-snow { display: flex; flex-wrap: wrap; gap: 2px; padding: 9px; border-color: #dfe5ee; border-radius: 13px 13px 0 0; background: linear-gradient(#fff, #f7f9fc); font-family: inherit; }
+.sp-quill-shell .ql-container.ql-snow { border-color: #dfe5ee; border-radius: 0 0 13px 13px; font-family: inherit; }
+.sp-quill-shell .ql-editor { min-height: 470px; max-height: 720px; padding: 34px clamp(22px, 6vw, 78px); overflow: auto; color: #1f2937; background: #fff; font-size: 11px; line-height: 2.05; text-align: right; }
+.sp-quill-shell .ql-editor.ql-blank::before { right: clamp(22px, 6vw, 78px); left: auto; color: #9aa4b3; font-style: normal; }
+.sp-quill-shell .ql-editor h1, .sp-quill-shell .ql-editor h2, .sp-quill-shell .ql-editor h3 { color: #111827; line-height: 1.6; }
+.sp-proposal-code { width: 100%; min-height: 520px; padding: 16px; resize: vertical; border: 1px solid #303b4d; border-radius: 13px; outline: none; color: #dbeafe; background: #111827; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; line-height: 1.8; }
+.sp-proposal-result { width: 100%; min-height: 560px; border: 1px solid var(--sp-line); border-radius: 13px; background: #fff; }
+.sp-editor-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 11px; }
+.sp-editor-footer small { color: #7c8799; font-size: 8px; }
+.sp-editor-footer .btn { font-size: 9px; }
 
 .sp-overview-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .sp-overview-grid article { display: grid; padding: 18px; }
@@ -3633,6 +3651,10 @@ select {
     .sp-settings-grid > .sp-card { padding: 15px; }
     .sp-message { max-width: 92%; }
     .sp-node-tools { opacity: 1; }
+    .sp-editor-modes { display: grid; width: 100%; grid-template-columns: repeat(3, 1fr); }
+    .sp-editor-modes button { justify-content: center; padding-inline: 5px; }
+    .sp-quill-shell .ql-editor { min-height: 430px; padding: 22px 16px; }
+    .sp-editor-footer { align-items: stretch; flex-direction: column; }
 }
 
 /* UNIFIED_PROJECT_CONTROL_CENTER_END */

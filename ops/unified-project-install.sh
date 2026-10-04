@@ -80,6 +80,7 @@ npm run build
 npm run manager:plan-test --workspace @stagepilot/worker
 npm run automation:selftest --workspace @stagepilot/worker
 npm run browser:composer-test --workspace @stagepilot/worker
+npm run browser:runtime-guard-test --workspace @stagepilot/worker
 node --check apps/worker/browser/chatgpt-adapter.mjs
 node --check apps/worker/src/browser-transport.mjs
 node --check apps/worker/src/planning-processor.mjs
@@ -108,6 +109,8 @@ rg -q 'browser-diagnostics' apps/worker/browser/chatgpt-adapter.mjs \
     || fail 'browser failure diagnostic capture missing'
 rg -q 'keyboard.insertText' apps/worker/browser/chatgpt-adapter.mjs \
     || fail 'atomic multiline Composer insertion missing'
+rg -q 'visibleRuntimeIntervention' apps/worker/src/browser-transport.mjs \
+    || fail 'visible browser runtime guard missing'
 if rg -U 'keyboard\s*\.\s*type\s*\(\s*text\b' apps/worker/browser/chatgpt-adapter.mjs; then
     fail 'unsafe multiline keyboard typing is present'
 fi
@@ -215,6 +218,7 @@ printf '%s\n' 'Detached browser runtime refresh: PASS'
 printf '%s\n' 'Atomic multiline prompt insertion: PASS'
 printf '%s\n' 'Single active planning request guard: PASS'
 printf '%s\n' 'Post-send automatic retry blocked: PASS'
+printf '%s\n' 'Visible noVNC runtime guard: PASS'
 printf '%s\n' 'Per-project GitHub credentials: PASS'
 printf '%s\n' 'STAGEPILOT_UNIFIED_PROJECT=PASS'
 printf 'Finished: %s\n' "$(date -u +%FT%TZ)"

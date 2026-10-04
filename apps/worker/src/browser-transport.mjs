@@ -17,6 +17,50 @@ const RESPONSE_ROOT = process.env.STAGEPILOT_BROWSER_RESPONSE_ROOT
 const SESSION_ROOT = process.env.STAGEPILOT_BROWSER_SESSION_ROOT
     ?? '/opt/stagepilot/runtime/browser-sessions';
 
+function pidAlive(pid) {
+    const value = Number(pid);
+    if (!Number.isInteger(value) || value <= 0) return false;
+    try {
+        process.kill(value, 0);
+        return true;
+    } catch (error) {
+        return error?.code === 'EPERM';
+    }
+}
+
+async function readVisibleRuntime(profileKey) {
+    try {
+        return JSON.parse(
+            await readFile(join(SESSION_ROOT, `${profileKey}.json`), 'utf8')
+        );
+    } catch (error) {
+        if (error?.code === 'ENOENT') return null;
+        const wrapped = new Error('VISIBLE_BROWSER_STATE_UNREADABLE');
+        wrapped.cause = error;
+        throw wrapped;
+    }
+}
+
+export function visibleRuntimeIntervention(visible, controllerAlive) {
+    if (
+        visible?.status !== 'ready'
+        || visible?.mode !== 'visible-login'
+        || controllerAlive !== true
+    ) {
+        return null;
+    }
+    return {
+        interventionRequired: true,
+        reason: 'visible_browser_active',
+        profileKey: visible.profileKey ?? null,
+        accountId: visible.accountId ?? null,
+        mode: 'visible-login',
+        noVncPort: visible.noVncPort ?? null,
+        localNoVncUrl: visible.localNoVncUrl ?? null,
+        startedAt: visible.startedAt ?? null
+    };
+}
+
 function parseLastJson(stdout) {
     const text = String(stdout ?? '').trim();
     if (!text) return null;
@@ -46,33 +90,17 @@ async function visibleManager(command, profileKey, accountId = '', targetUrl = '
 }
 
 export async function ensureBrowserRuntime({ profileKey, accountId, targetUrl }) {
-    try {
-        const visible = JSON.parse(
-            await readFile(join(SESSION_ROOT, `${profileKey}.json`), 'utf8')
-        );
-        if (visible?.status === 'ready' && Number.isInteger(Number(visible.controllerPid))) {
-            let visibleAlive = false;
-            try {
-                process.kill(Number(visible.controllerPid), 0);
-                visibleAlive = true;
-            } catch {
-                visibleAlive = false;
-            }
-            if (visibleAlive) {
-                const error = new Error('CHATGPT_INTERVENTION_REQUIRED:VISIBLE_BROWSER_ACTIVE');
-                error.diagnostic = {
-                    interventionRequired: true,
-                    reason: 'visible_browser_active',
-                    profileKey,
-                    mode: 'visible-login'
-                };
-                throw error;
-            }
-            // Stale visible state; continue with the managed background runtime.
-        }
-    } catch {
-        // No visible monitoring runtime is active.
+    const visible = await readVisibleRuntime(profileKey);
+    const intervention = visibleRuntimeIntervention(
+        visible,
+        pidAlive(visible?.controllerPid)
+    );
+    if (intervention) {
+        const error = new Error('CHATGPT_INTERVENTION_REQUIRED:VISIBLE_BROWSER_ACTIVE');
+        error.diagnostic = intervention;
+        throw error;
     }
+
     let state = await manager('status', profileKey).catch(() => null);
     if (!(state?.running === true || state?.status === 'ready')) {
         state = await manager('start', profileKey, accountId, targetUrl);

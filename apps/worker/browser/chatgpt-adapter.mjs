@@ -143,6 +143,35 @@ function sha256(
 }
 
 
+export function canonicalizeComposerText(
+    value
+) {
+
+    return String(
+        value
+        ??
+        ''
+    )
+        .normalize(
+            'NFC'
+        )
+        .replace(
+            /[\u200B\u2060\uFEFF]/gu,
+            ''
+        )
+        .replace(
+            /\u00A0/gu,
+            ' '
+        )
+        .replace(
+            /[\s\u2028\u2029]+/gu,
+            ' '
+        )
+        .trim();
+
+}
+
+
 function normalizeError(
     error
 ) {
@@ -1864,15 +1893,27 @@ async function draftPrompt({
         .dispose();
 
 
+    const expectedCanonicalText =
+        canonicalizeComposerText(
+            text
+        );
+
+
+    const actualCanonicalText =
+        canonicalizeComposerText(
+            actualText
+        );
+
+
     const expectedHash =
         sha256(
-            text
+            expectedCanonicalText
         );
 
 
     const actualHash =
         sha256(
-            actualText
+            actualCanonicalText
         );
 
 
@@ -1959,8 +2000,16 @@ async function draftPrompt({
         promptHash:
             expectedHash,
 
+        promptRawHash:
+            sha256(
+                text
+            ),
+
         promptLength:
             text.length,
+
+        promptCanonicalLength:
+            expectedCanonicalText.length,
 
         draftUrl:
             page.url(),
@@ -2138,7 +2187,9 @@ async function commitPrompt({
 
     const currentHash =
         sha256(
-            currentText
+            canonicalizeComposerText(
+                currentText
+            )
         );
 
 

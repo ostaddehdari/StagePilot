@@ -9,6 +9,7 @@ import {
 } from 'node:url';
 
 import {
+    canonicalizeComposerText,
     replaceComposerTextAtomically
 } from './chatgpt-adapter.mjs';
 
@@ -116,6 +117,32 @@ assert.match(
 );
 
 
+const canonicalExpected =
+    canonicalizeComposerText(
+        'TASK:\r\nLine one\nLine two\u00a0done\u200b'
+    );
+
+
+const canonicalRendered =
+    canonicalizeComposerText(
+        'TASK:\n\nLine one\n\nLine two done\n'
+    );
+
+
+assert.equal(
+    canonicalRendered,
+    canonicalExpected
+);
+
+
+assert.notEqual(
+    canonicalizeComposerText(
+        'TASK: Line one Line missing'
+    ),
+    canonicalExpected
+);
+
+
 process.stdout.write(
     `${JSON.stringify({
         ok: true,
@@ -125,6 +152,8 @@ process.stdout.write(
             call => call[0] === 'cdp.send' && call[1] === 'Input.insertText'
         ).length,
         detachedSessions: calls.filter(call => call[0] === 'cdp.detach').length,
-        enterKeyEvents: calls.filter(call => call[1] === 'Enter').length
+        enterKeyEvents: calls.filter(call => call[1] === 'Enter').length,
+        domWhitespaceNormalized: canonicalRendered === canonicalExpected,
+        contentChangeRejected: true
     })}\n`
 );

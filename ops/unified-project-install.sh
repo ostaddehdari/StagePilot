@@ -109,6 +109,8 @@ rg -q 'browser-diagnostics' apps/worker/browser/chatgpt-adapter.mjs \
     || fail 'browser failure diagnostic capture missing'
 rg -q 'Input\.insertText' apps/worker/browser/chatgpt-adapter.mjs \
     || fail 'atomic CDP multiline Composer insertion missing'
+rg -q 'canonicalizeComposerText' apps/worker/browser/chatgpt-adapter.mjs \
+    || fail 'Composer DOM text canonicalization missing'
 if rg -U 'keyboard\s*\.\s*insertText\s*\(' apps/worker/browser/chatgpt-adapter.mjs; then
     fail 'unsupported Puppeteer keyboard.insertText is present'
 fi
@@ -219,6 +221,7 @@ printf '%s\n' 'Detailed failure diagnostics: PASS'
 printf '%s\n' 'Resilient ChatGPT composer detection: PASS'
 printf '%s\n' 'Detached browser runtime refresh: PASS'
 printf '%s\n' 'Atomic multiline prompt insertion: PASS'
+printf '%s\n' 'Composer DOM text verification: PASS'
 printf '%s\n' 'Single active planning request guard: PASS'
 printf '%s\n' 'Post-send automatic retry blocked: PASS'
 printf '%s\n' 'Visible noVNC runtime guard: PASS'

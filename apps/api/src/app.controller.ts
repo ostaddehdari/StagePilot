@@ -49,8 +49,11 @@ import {
 import {
     addPlanningMessage,
     approveProjectPlan,
+    deletePlanningMessage,
+    finalizeOfficialProposal,
     getPlanningWorkspace,
     requestPlanningEvaluation,
+    saveOfficialProposalHtml,
     saveProjectPlan
 } from './planning';
 
@@ -1071,17 +1074,75 @@ export class AppController {
     @Post('projects/:id/planning/evaluate')
     async evaluateProject(
         @Param('id') id: string,
+        @Body() body: { workflow?: unknown },
         @Headers('x-stagepilot-internal-key') internalKey?: string
     ) {
         this.authorizeInternal(internalKey);
         try {
             return {
                 ok: true,
-                promptRequest: await requestPlanningEvaluation(id)
+                promptRequest: await requestPlanningEvaluation(id, body?.workflow)
             };
         } catch (error) {
             throw new BadRequestException(
                 error instanceof Error ? error.message : 'PLANNING_EVALUATION_FAILED'
+            );
+        }
+    }
+
+
+    @Delete('projects/:id/planning/messages/:messageId')
+    async removePlanningMessage(
+        @Param('id') id: string,
+        @Param('messageId') messageId: string,
+        @Headers('x-stagepilot-internal-key') internalKey?: string
+    ) {
+        this.authorizeInternal(internalKey);
+        try {
+            return { ok: true, result: await deletePlanningMessage(id, messageId) };
+        } catch (error) {
+            throw new BadRequestException(
+                error instanceof Error ? error.message : 'PLANNING_MESSAGE_DELETE_FAILED'
+            );
+        }
+    }
+
+
+    @Post('projects/:id/planning/official-proposal')
+    async makeOfficialProposal(
+        @Param('id') id: string,
+        @Body() body: { messageId?: unknown },
+        @Headers('x-stagepilot-internal-key') internalKey?: string
+    ) {
+        this.authorizeInternal(internalKey);
+        try {
+            return {
+                ok: true,
+                officialProposal: await finalizeOfficialProposal(id, String(body?.messageId ?? ''))
+            };
+        } catch (error) {
+            throw new BadRequestException(
+                error instanceof Error ? error.message : 'OFFICIAL_PROPOSAL_FAILED'
+            );
+        }
+    }
+
+
+    @Patch('projects/:id/planning/official-proposal/html')
+    async updateOfficialProposalHtml(
+        @Param('id') id: string,
+        @Body() body: { html?: unknown },
+        @Headers('x-stagepilot-internal-key') internalKey?: string
+    ) {
+        this.authorizeInternal(internalKey);
+        try {
+            return {
+                ok: true,
+                officialProposal: await saveOfficialProposalHtml(id, body?.html)
+            };
+        } catch (error) {
+            throw new BadRequestException(
+                error instanceof Error ? error.message : 'OFFICIAL_PROPOSAL_HTML_FAILED'
             );
         }
     }

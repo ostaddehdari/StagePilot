@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { parseManagerResponse } from '../manager/response-parser.mjs';
 import { sendPromptAndWait } from './browser-transport.mjs';
 
@@ -85,7 +87,9 @@ export async function claimPlanningRequest(db, workerKey) {
              JOIN projects p
                ON p.id = pr.project_id
               AND p.deleted_at IS NULL
-             WHERE pr.request_type = 'project_plan'
+             WHERE pr.request_type IN (
+                    'project_plan', 'project_proposal', 'project_plan_tree'
+             )
                AND pr.status IN ('created', 'retry')
                AND (pr.next_attempt_at IS NULL OR pr.next_attempt_at <= now())
              ORDER BY pr.created_at
@@ -160,6 +164,96 @@ async function requestContext(db, requestId) {
     return result.rows[0];
 }
 
+
+async function persistProposalResponse(db, row, transport) {
+    const rawText = cleanJsonResponse(transport.text);
+    const parsed = parseManagerResponse(rawText);
+    if (parsed.responseType !== 'project_proposal') {
+        throw new Error(`EXPECTED_PROJECT_PROPOSAL:${parsed.responseType}`);
+    }
+    const client = await db.connect();
+    try {
+        await client.query('BEGIN');
+        const responseResult = await client.query(
+            `INSERT INTO prompt_responses (
+                prompt_request_id, response_type, raw_text, parsed_json,
+                extraction_status, is_complete
+             ) VALUES ($1::uuid, 'project_proposal', $2, $3::jsonb, 'validated', true)
+             RETURNING id`,
+            [row.id, rawText, JSON.stringify(parsed.envelope)]
+        );
+        const revisionResult = await client.query(
+            `SELECT GREATEST(current_plan_revision, 1) AS revision
+             FROM projects WHERE id = $1::uuid FOR UPDATE`,
+            [row.project_id]
+        );
+        await client.query(
+            `INSERT INTO project_planning_messages (
+                project_id, revision, role, message_type, content, payload
+             ) VALUES (
+                $1::uuid, $2, 'assistant', 'proposal_draft', $3,
+                jsonb_build_object(
+                    'proposal', $4::jsonb,
+                    'summary', $5::text,
+                    'promptResponseId', $6::uuid
+                )
+             )`,
+            [
+                row.project_id,
+                revisionResult.rows[0].revision,
+                parsed.envelope.proposalMarkdown,
+                JSON.stringify(parsed.envelope.proposal),
+                parsed.envelope.summary,
+                responseResult.rows[0].id
+            ]
+        );
+        await client.query(
+            `UPDATE prompt_requests
+             SET status = 'completed', completed_at = now(), last_error = NULL,
+                 context_json = context_json || jsonb_build_object(
+                    'responseSha256', $2::text, 'conversationUrl', $3::text
+                 )
+             WHERE id = $1::uuid`,
+            [row.id, transport.sha256, transport.conversationUrl]
+        );
+        await client.query(
+            `UPDATE conversations
+             SET external_url = $2, external_chat_id = $3, status = 'active',
+                 metadata = metadata || jsonb_build_object('lastAutomatedResponseAt', now())
+             WHERE id = $1::uuid`,
+            [row.conversation_id, transport.conversationUrl, transport.conversationId]
+        );
+        await client.query(
+            `UPDATE projects
+             SET settings = COALESCE(settings, '{}'::jsonb) || jsonb_build_object(
+                    'planningStatus', 'proposal_draft_ready'
+                 ), updated_at = now()
+             WHERE id = $1::uuid`,
+            [row.project_id]
+        );
+        await client.query(
+            `INSERT INTO events (
+                project_id, entity_type, entity_id, event_type, severity,
+                actor_type, actor_id, message, data
+             ) VALUES (
+                $1::uuid, 'prompt_request', $2::text,
+                'planning.proposal.completed', 'info', 'worker', $3,
+                'پروپوزال حرفه‌ای ChatGPT اعتبارسنجی و در گفت‌وگو ثبت شد.',
+                jsonb_build_object('promptResponseId', $4::uuid)
+             )`,
+            [row.project_id, row.id, row.claimed_by, responseResult.rows[0].id]
+        );
+        await client.query('COMMIT');
+        return { projectId: row.project_id, proposalDraft: true };
+    } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+    } finally {
+        client.release();
+    }
+}
+
+
 async function persistPlanResponse(db, row, transport) {
     const rawText = cleanJsonResponse(transport.text);
     const parsed = parseManagerResponse(rawText);
@@ -186,6 +280,7 @@ async function persistPlanResponse(db, row, transport) {
         );
         const version = Number(versionResult.rows[0].version);
         const plan = parsed.envelope.plan;
+        const materialize = row.request_type === 'project_plan_tree';
         await client.query(
             `INSERT INTO project_plan_versions (
                 project_id, version, status, title, summary, proposal_json,
@@ -200,14 +295,95 @@ async function persistPlanResponse(db, row, transport) {
                 responseResult.rows[0].id
             ]
         );
+
+        let stageCount = 0;
+        let workCount = 0;
+        if (materialize) {
+            await client.query(
+                `UPDATE project_plan_versions
+                 SET status = 'superseded', updated_at = now()
+                 WHERE project_id = $1::uuid
+                   AND status = 'approved'
+                   AND version <> $2`,
+                [row.project_id, version]
+            );
+            await client.query(
+                `UPDATE project_plan_versions
+                 SET status = 'approved', approved_at = now(), updated_at = now()
+                 WHERE project_id = $1::uuid AND version = $2`,
+                [row.project_id, version]
+            );
+            await client.query(
+                `INSERT INTO project_revisions (
+                    project_id, revision, source, request_text,
+                    plan_json, approved, approved_at
+                 ) VALUES (
+                    $1::uuid, $2, 'proposal_to_plan_tree', NULL,
+                    $3::jsonb, true, now()
+                 )
+                 ON CONFLICT (project_id, revision) DO UPDATE SET
+                    plan_json = EXCLUDED.plan_json,
+                    approved = true,
+                    approved_at = now(),
+                    source = EXCLUDED.source`,
+                [row.project_id, version, JSON.stringify(plan)]
+            );
+            await client.query(
+                `DELETE FROM stages WHERE project_id = $1::uuid AND revision = $2`,
+                [row.project_id, version]
+            );
+            for (let stageIndex = 0; stageIndex < plan.stages.length; stageIndex += 1) {
+                const stage = plan.stages[stageIndex];
+                const stageId = randomUUID();
+                await client.query(
+                    `INSERT INTO stages (
+                        id, project_id, revision, stage_key, title, description,
+                        position, weight, status, acceptance_criteria, metadata
+                     ) VALUES (
+                        $1::uuid, $2::uuid, $3, $4, $5, $6,
+                        $7, $8, 'pending', $9::jsonb,
+                        jsonb_build_object('sourcePlanVersion', $3::integer, 'generatedBy', 'project_plan_tree')
+                     )`,
+                    [
+                        stageId, row.project_id, version, stage.id, stage.title,
+                        stage.objective, stageIndex + 1, stage.weight,
+                        JSON.stringify(stage.acceptanceCriteria)
+                    ]
+                );
+                stageCount += 1;
+                for (let workIndex = 0; workIndex < stage.works.length; workIndex += 1) {
+                    const work = stage.works[workIndex];
+                    await client.query(
+                        `INSERT INTO works (
+                            id, stage_id, work_key, title, description, position,
+                            weight, status, acceptance_criteria, dependencies, metadata
+                         ) VALUES (
+                            $1::uuid, $2::uuid, $3, $4, $5, $6,
+                            $7, 'pending', $8::jsonb, $9::jsonb,
+                            jsonb_build_object('sourcePlanVersion', $10::integer, 'generatedBy', 'project_plan_tree')
+                         )`,
+                        [
+                            randomUUID(), stageId, work.id, work.title,
+                            work.objective, workIndex + 1, work.weight,
+                            JSON.stringify(work.acceptanceCriteria),
+                            JSON.stringify(work.dependsOn), version
+                        ]
+                    );
+                    workCount += 1;
+                }
+            }
+        }
         await client.query(
             `INSERT INTO project_planning_messages (
                 project_id, revision, role, message_type, content, payload
              ) VALUES (
-                $1::uuid, $2, 'assistant', 'proposal', $3,
+                $1::uuid, $2, 'assistant', $5, $3,
                 jsonb_build_object('planVersion', $2::integer, 'promptResponseId', $4::uuid)
              )`,
-            [row.project_id, version, plan.summary, responseResult.rows[0].id]
+            [
+                row.project_id, version, plan.summary, responseResult.rows[0].id,
+                materialize ? 'plan_tree' : 'proposal'
+            ]
         );
         await client.query(
             `UPDATE prompt_requests
@@ -228,27 +404,69 @@ async function persistPlanResponse(db, row, transport) {
         );
         await client.query(
             `UPDATE projects
-             SET settings = settings || jsonb_build_object(
-                    'planningStatus', 'proposal_review',
-                    'latestPlanVersion', $2::integer
+             SET settings = COALESCE(settings, '{}'::jsonb) || jsonb_build_object(
+                    'planningStatus', $3::text,
+                    'latestPlanVersion', $2::integer,
+                    'approvedPlanVersion', CASE WHEN $4::boolean THEN $2::integer ELSE COALESCE((settings->>'approvedPlanVersion')::integer, 0) END,
+                    'automationStatus', CASE WHEN $4::boolean THEN 'paused' ELSE COALESCE(settings->>'automationStatus', 'idle') END
                  ), updated_at = now()
              WHERE id = $1::uuid`,
-            [row.project_id, version]
+            [
+                row.project_id,
+                version,
+                materialize ? 'plan_tree_ready' : 'proposal_review',
+                materialize
+            ]
         );
+        if (materialize) {
+            await client.query(
+                `INSERT INTO project_automation_state (
+                    project_id, status, mode, max_work_attempts, metadata
+                 ) VALUES (
+                    $1::uuid, 'paused', 'automatic', 3,
+                    jsonb_build_object('approvedPlanVersion', $2::integer, 'startedBy', 'plan_tree_generation')
+                 )
+                 ON CONFLICT (project_id) DO UPDATE SET
+                    status = 'paused', mode = 'automatic',
+                    current_stage_id = NULL, current_work_id = NULL,
+                    lease_owner = NULL, lease_expires_at = NULL,
+                    last_error = NULL, completed_at = NULL,
+                    metadata = project_automation_state.metadata || EXCLUDED.metadata,
+                    updated_at = now()`,
+                [row.project_id, version]
+            );
+        }
         await client.query(
             `INSERT INTO events (
                 project_id, entity_type, entity_id, event_type, severity,
                 actor_type, actor_id, message, data
              ) VALUES (
                 $1::uuid, 'prompt_request', $2::text,
-                'planning.response.completed', 'info', 'worker', $3,
-                'ChatGPT planning response validated and saved.',
-                jsonb_build_object('planVersion', $4::integer)
+                $5::text, 'info', 'worker', $3,
+                $6::text,
+                jsonb_build_object(
+                    'planVersion', $4::integer,
+                    'stageCount', $7::integer,
+                    'workCount', $8::integer
+                )
              )`,
-            [row.project_id, row.id, row.claimed_by, version]
+            [
+                row.project_id, row.id, row.claimed_by, version,
+                materialize ? 'project.plan_tree.materialized' : 'planning.response.completed',
+                materialize
+                    ? 'پروپوزال رسمی به Stage و Work اجرایی تبدیل شد؛ اجرا تا تأیید کاربر متوقف است.'
+                    : 'ChatGPT planning response validated and saved.',
+                stageCount, workCount
+            ]
         );
         await client.query('COMMIT');
-        return { projectId: row.project_id, planVersion: version };
+        return {
+            projectId: row.project_id,
+            planVersion: version,
+            planTree: materialize,
+            stageCount,
+            workCount
+        };
     } catch (error) {
         await client.query('ROLLBACK');
         throw error;
@@ -283,16 +501,20 @@ export async function processPlanningRequest(db, request) {
                 && row.settings?.chatTargetType === 'project'
                     ? row.project_name
                     : null,
-            operationId: `plan:${row.id}`,
+            operationId: `${row.request_type}:${row.id}`,
             promptText: row.prompt_text,
             timeoutMs: Number(process.env.STAGEPILOT_AI_RESPONSE_TIMEOUT_MS ?? 240_000),
             onProgress: progress => recordTransportProgress(db, row, progress)
         });
-        const persisted = await persistPlanResponse(db, row, response);
+        const persisted = row.request_type === 'project_proposal'
+            ? await persistProposalResponse(db, row, response)
+            : await persistPlanResponse(db, row, response);
         await recordTransportProgress(db, row, {
             stage: 'completed',
             at: new Date().toISOString(),
-            planVersion: persisted.planVersion,
+            planVersion: persisted.planVersion ?? null,
+            proposalDraft: persisted.proposalDraft ?? false,
+            planTree: persisted.planTree ?? false,
             responseSha256: response.sha256
         });
         return persisted;

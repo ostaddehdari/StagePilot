@@ -44,6 +44,17 @@ export type PlanningWorkspace = {
         created_at: string;
         completed_at: string | null;
     }>;
+    officialProposal: null | {
+        version: number;
+        status: string;
+        title: string;
+        summary: string;
+        proposal: Record<string, unknown>;
+        proposalMarkdown: string;
+        proposalHtml: string;
+        sourceMessageId: string;
+        finalizedAt: string;
+    };
 };
 
 
@@ -127,11 +138,42 @@ export async function addPlanningMessageRequest(
 
 
 export async function requestPlanningEvaluationRequest(
-    projectId: string
+    projectId: string,
+    workflow: 'proposal' | 'plan_tree' = 'proposal'
 ) {
     return requestJson(
         `/projects/${encodeURIComponent(projectId)}/planning/evaluate`,
-        { method: 'POST' }
+        {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ workflow })
+        }
+    );
+}
+
+
+export async function deletePlanningMessageRequest(
+    projectId: string,
+    messageId: string
+) {
+    return requestJson(
+        `/projects/${encodeURIComponent(projectId)}/planning/messages/${encodeURIComponent(messageId)}`,
+        { method: 'DELETE' }
+    );
+}
+
+
+export async function finalizeOfficialProposalRequest(
+    projectId: string,
+    messageId: string
+) {
+    return requestJson(
+        `/projects/${encodeURIComponent(projectId)}/planning/official-proposal`,
+        {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ messageId })
+        }
     );
 }
 

@@ -3539,6 +3539,11 @@ select {
 .sp-message.role-user { margin-right: auto; color: #fff; background: linear-gradient(135deg, #4f46e5, #6859e8); }
 .sp-message header { display: flex; justify-content: space-between; gap: 15px; margin-bottom: 6px; font-size: 8px; opacity: .78; }
 .sp-message p { margin: 0; white-space: pre-wrap; font-size: 11px; line-height: 1.9; }
+.sp-message header span { margin-right: auto; }
+.sp-message-delete { width: 25px; height: 25px; display: grid; place-items: center; border: 0; border-radius: 8px; color: inherit; background: transparent; opacity: .62; }
+.sp-message-delete:hover { color: #b91c1c; background: rgba(239, 68, 68, .12); opacity: 1; }
+.sp-message-actions { display: flex; justify-content: flex-end; margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(99, 102, 241, .16); }
+.sp-message-actions .btn { font-size: 9px; }
 .sp-chat-composer { padding: 12px; border-top: 1px solid var(--sp-line); background: #fff; }
 .sp-chat-composer textarea { resize: vertical; }
 .sp-chat-composer > div { display: flex; justify-content: flex-end; gap: 7px; margin-top: 8px; }

@@ -138,6 +138,7 @@ export function ProjectControlCenter({
     const [inspectors, setInspectors] = useState<InspectorTab[]>([]);
     const [activeInspector, setActiveInspector] = useState('chat');
     const latestPlan = data.planning.plans[0] ?? null;
+    const officialProposal = data.planning.officialProposal;
     const latestRequest = data.planning.promptRequests[0] ?? null;
     const transportHistory = Array.isArray(latestRequest?.context_json?.transportHistory)
         ? latestRequest.context_json.transportHistory as Array<Record<string, unknown>>
@@ -146,8 +147,8 @@ export function ProjectControlCenter({
         ? ['created', 'retry', 'processing', 'sent', 'waiting_response'].includes(latestRequest.status)
         : false;
     const defaultHtml = useMemo(
-        () => latestPlan ? (latestPlan.proposal_html || planHtml(latestPlan.proposal_json)) : '',
-        [latestPlan]
+        () => officialProposal?.proposalHtml ?? '',
+        [officialProposal]
     );
     const [proposalSource, setProposalSource] = useState(defaultHtml);
 
@@ -226,7 +227,7 @@ export function ProjectControlCenter({
             }
         }, 'تنظیمات اتصال پروژه ذخیره شد.');
         if (saved && intent === 'evaluate') {
-            await command('planning-evaluate', {}, 'تنظیمات ذخیره و ارزیابی ایده در صف ChatGPT قرار گرفت.');
+            await command('planning-evaluate', {}, 'تنظیمات ذخیره و ساخت پروپوزال حرفه‌ای در صف ChatGPT قرار گرفت.');
         }
     }
 
@@ -440,11 +441,40 @@ export function ProjectControlCenter({
                             </div>}
                             <div className="sp-chat-scroll">
                                 {data.planning.messages.length === 0 && <div className="sp-empty-chat"><i className="fa-solid fa-wand-magic-sparkles" /><h3>ایده آمادهٔ ارزیابی است</h3><p>تنظیمات را کامل و اولین چرخه را برای ChatGPT ارسال کنید.</p></div>}
-                                {data.planning.messages.map(message => <article key={message.id} className={`sp-message role-${message.role}`}><header><strong>{message.role === 'user' ? 'شما' : message.role === 'assistant' ? 'هوش مصنوعی' : 'StagePilot'}</strong><span>{faDate(message.created_at)}</span></header><p>{message.content}</p></article>)}
+                                {data.planning.messages.map(message => <article key={message.id} className={`sp-message role-${message.role}`}>
+                                    <header>
+                                        <strong>{message.role === 'user' ? 'شما' : message.role === 'assistant' ? 'هوش مصنوعی' : 'StagePilot'}</strong>
+                                        <span>{faDate(message.created_at)}</span>
+                                        <button
+                                            type="button"
+                                            className="sp-message-delete"
+                                            title="حذف این پیام"
+                                            disabled={Boolean(busy)}
+                                            onClick={() => {
+                                                if (window.confirm('این پیام از گفت‌وگوی پروژه حذف شود؟')) {
+                                                    void command('message-delete', { messageId: message.id }, 'پیام حذف شد.');
+                                                }
+                                            }}
+                                        ><i className="fa-solid fa-trash-can" /></button>
+                                    </header>
+                                    <p>{message.content}</p>
+                                    {message.role === 'assistant' && message.message_type === 'proposal_draft' && <div className="sp-message-actions">
+                                        <button
+                                            type="button"
+                                            className="btn sp-primary"
+                                            disabled={Boolean(busy) || requestActive}
+                                            onClick={() => void command(
+                                                'proposal-finalize',
+                                                { messageId: message.id },
+                                                'این پاسخ به پروپوزال رسمی پروژه تبدیل شد.'
+                                            )}
+                                        ><i className="fa-solid fa-file-circle-check" /> تبدیل به پروپوزال رسمی</button>
+                                    </div>}
+                                </article>)}
                             </div>
                             <form className="sp-chat-composer" onSubmit={event => { event.preventDefault(); const formElement = event.currentTarget; const form = new FormData(formElement); void command('planning-comment', { content: String(form.get('content') ?? '') }, 'نظر ثبت و چرخه جدید به ChatGPT ارسال شد.').then(result => { if (result) formElement.reset(); }); }}>
                                 <textarea name="content" required rows={3} maxLength={30000} autoComplete="off" placeholder="نظر، محدودیت یا تغییر موردنظر را بنویسید…" />
-                                <div><button type="submit" className="btn sp-primary" disabled={Boolean(busy) || requestActive}><i className="fa-solid fa-paper-plane" /> ارسال نظر به ChatGPT</button><button type="button" className="btn btn-outline-primary" disabled={Boolean(busy) || requestActive} onClick={() => void command('planning-evaluate', {}, 'چرخهٔ جدید ارزیابی به ChatGPT ارسال شد.')}><i className="fa-solid fa-wand-magic-sparkles" /> ساخت پروپوزال با ChatGPT</button></div>
+                                <div><button type="submit" className="btn sp-primary" disabled={Boolean(busy) || requestActive}><i className="fa-solid fa-paper-plane" /> ارسال نظر به ChatGPT</button><button type="button" className="btn btn-outline-primary" disabled={Boolean(busy) || requestActive} onClick={() => void command('planning-evaluate', {}, 'پرامپت حرفه‌ای ساخت پروپوزال به ChatGPT ارسال شد.')}><i className="fa-solid fa-wand-magic-sparkles" /> ساخت پروپوزال با ChatGPT</button></div>
                             </form>
                         </> : (() => {
                             const inspector = inspectors.find(item => item.id === activeInspector);
@@ -461,10 +491,10 @@ export function ProjectControlCenter({
 
             {tab === 'proposal' && (
                 <section className="sp-tab-page">
-                    <div className="sp-page-title"><div><span>APPROVED SCOPE</span><h2>پروپوزال و ساخت درخت</h2></div><div className="sp-inline-actions">{latestPlan && latestPlan.status !== 'approved' && <button className="btn sp-primary" type="button" disabled={Boolean(busy)} onClick={() => void command('plan-approve', { version: latestPlan.version, repositoryName: String(settings.repositoryName ?? data.project.slug) }, 'پروپوزال تأیید و درخت اجرایی ساخته شد.')}><i className="fa-solid fa-diagram-project" /> تأیید و ساخت درخت</button>}</div></div>
-                    {!latestPlan ? <div className="sp-card sp-empty-proposal"><i className="fa-solid fa-file-circle-plus" /><h3>پروپوزالی موجود نیست</h3><p>از اتاق فرمان، چرخهٔ تحلیل ایده را اجرا کنید.</p><button className="btn sp-primary" type="button" onClick={() => selectTab('workspace')}>رفتن به گفت‌وگو</button></div> : <div className="sp-proposal-grid">
-                        <article className="sp-card sp-proposal-meta"><div><span>نسخه</span><strong>{faNumber(latestPlan.version)}</strong></div><div><span>وضعیت</span><strong>{latestPlan.status}</strong></div><div><span>عنوان</span><strong>{latestPlan.title}</strong></div><p>{latestPlan.summary}</p></article>
-                        <article className="sp-card sp-html-editor"><div className="sp-card-title"><i className="fa-solid fa-code" /><div><h3>ویرایشگر HTML</h3><p>کد پروپوزال را ویرایش و پیش‌نمایش ایزوله را بررسی کنید.</p></div></div><textarea dir="ltr" spellCheck={false} value={proposalSource} onChange={event => setProposalSource(event.target.value)} /><button className="btn sp-primary" type="button" disabled={Boolean(busy)} onClick={() => void command('proposal-html', { version: latestPlan.version, html: proposalSource }, 'نسخهٔ HTML پروپوزال ذخیره شد.')}><i className="fa-solid fa-floppy-disk" /> ذخیره HTML</button></article>
+                    <div className="sp-page-title"><div><span>OFFICIAL PROPOSAL</span><h2>پروپوزال رسمی و ساخت PLAN TREE</h2></div><div className="sp-inline-actions">{officialProposal && <button className="btn sp-primary" type="button" disabled={Boolean(busy) || requestActive} onClick={() => void command('plan-tree-generate', {}, 'پرامپت حرفه‌ای ساخت Stage و Work به ChatGPT ارسال شد.')}><i className="fa-solid fa-diagram-project" /> ساخت Stage و Work با ChatGPT</button>}</div></div>
+                    {!officialProposal ? <div className="sp-card sp-empty-proposal"><i className="fa-solid fa-file-circle-plus" /><h3>پروپوزال رسمی هنوز انتخاب نشده</h3><p>در گفت‌وگو «ساخت پروپوزال با ChatGPT» را بزنید و سپس پاسخ مناسب را به پروپوزال رسمی تبدیل کنید.</p><button className="btn sp-primary" type="button" onClick={() => selectTab('workspace')}>رفتن به گفت‌وگو</button></div> : <div className="sp-proposal-grid">
+                        <article className="sp-card sp-proposal-meta"><div><span>نسخه</span><strong>{faNumber(officialProposal.version)}</strong></div><div><span>وضعیت</span><strong>{officialProposal.status}</strong></div><div><span>عنوان</span><strong>{officialProposal.title}</strong></div><p>{officialProposal.summary}</p>{latestPlan && <small>آخرین PLAN TREE: نسخه {faNumber(latestPlan.version)} · {latestPlan.status}</small>}</article>
+                        <article className="sp-card sp-html-editor"><div className="sp-card-title"><i className="fa-solid fa-code" /><div><h3>ویرایشگر HTML</h3><p>کد پروپوزال رسمی را ویرایش و پیش‌نمایش ایزوله را بررسی کنید.</p></div></div><textarea dir="ltr" spellCheck={false} value={proposalSource} onChange={event => setProposalSource(event.target.value)} /><button className="btn sp-primary" type="button" disabled={Boolean(busy)} onClick={() => void command('proposal-html', { html: proposalSource }, 'نسخهٔ HTML پروپوزال رسمی ذخیره شد.')}><i className="fa-solid fa-floppy-disk" /> ذخیره HTML</button></article>
                         <article className="sp-card sp-proposal-preview"><div className="sp-card-title"><i className="fa-solid fa-eye" /><div><h3>پیش‌نمایش امن</h3><p>اسکریپت‌های داخل HTML اجرا نمی‌شوند.</p></div></div><iframe title="پیش‌نمایش پروپوزال" sandbox="" srcDoc={proposalSource} /></article>
                     </div>}
                 </section>

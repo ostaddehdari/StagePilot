@@ -2,6 +2,10 @@ import {
     validateProjectPlanEnvelope
 } from './project-plan-contract.mjs';
 
+import {
+    validateProjectProposalEnvelope
+} from './project-proposal-contract.mjs';
+
 
 export const RESPONSE_TYPES =
     Object.freeze([
@@ -11,6 +15,8 @@ export const RESPONSE_TYPES =
         'report_only',
 
         'decision_required',
+
+        'project_proposal',
 
         'project_plan'
 
@@ -319,6 +325,31 @@ export function validateResponseEnvelope(
 
             errors.push(
                 'decision_required requires at least two decision options'
+            );
+
+        }
+
+    }
+
+
+    if (
+        envelope.responseType
+        ===
+        'project_proposal'
+    ) {
+
+        try {
+
+            validateProjectProposalEnvelope(
+                envelope
+            );
+
+        } catch (error) {
+
+            errors.push(
+                error instanceof Error
+                    ? error.message
+                    : 'INVALID_PROJECT_PROPOSAL'
             );
 
         }

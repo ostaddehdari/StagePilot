@@ -78,6 +78,7 @@ chmod 600 "$BACKUP_ROOT/database.dump"
 npm ci
 npm run build
 npm run manager:plan-test --workspace @stagepilot/worker
+npm run manager:proposal-test --workspace @stagepilot/worker
 npm run automation:selftest --workspace @stagepilot/worker
 npm run browser:composer-test --workspace @stagepilot/worker
 npm run browser:runtime-guard-test --workspace @stagepilot/worker
@@ -116,6 +117,16 @@ if rg -U 'keyboard\s*\.\s*insertText\s*\(' apps/worker/browser/chatgpt-adapter.m
 fi
 rg -q 'visibleRuntimeIntervention' apps/worker/src/browser-transport.mjs \
     || fail 'visible browser runtime guard missing'
+rg -q 'STAGEPILOT_PROFESSIONAL_PROPOSAL_V1' apps/api/src/planning.ts \
+    || fail 'professional proposal prompt missing'
+rg -q 'STAGEPILOT_PROPOSAL_TO_PLAN_TREE_V1' apps/api/src/planning.ts \
+    || fail 'proposal-to-plan-tree prompt missing'
+rg -q 'Nginx reverse-proxy' apps/api/src/planning.ts \
+    || fail 'Nginx public URL planning rule missing'
+rg -q 'Stage Exit Verification' apps/api/src/planning.ts \
+    || fail 'mandatory Stage completion test rule missing'
+rg -q 'GitHub repository/branch' apps/api/src/planning.ts \
+    || fail 'GitHub synchronization planning rule missing'
 if rg -U 'keyboard\s*\.\s*type\s*\(\s*text\b' apps/worker/browser/chatgpt-adapter.mjs; then
     fail 'unsafe multiline keyboard typing is present'
 fi
@@ -143,11 +154,12 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/013_core_automati
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/014_project_creation_reliability.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/015_unified_project_workspace.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/016_chatgpt_exactly_once.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/017_proposal_plan_tree_workflow.sql
 
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c \
     "SELECT count(*) AS preserved_nonterminal_requests
      FROM prompt_requests
-     WHERE request_type = 'project_plan'
+     WHERE request_type IN ('project_plan', 'project_proposal', 'project_plan_tree')
        AND status IN ('processing', 'sent', 'waiting_response');"
 
 chown -R "$RUNTIME_USER:$RUNTIME_GROUP" apps/web/.next
@@ -185,6 +197,9 @@ BEGIN
     END IF;
     IF NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version = '016_chatgpt_exactly_once') THEN
         RAISE EXCEPTION 'migration 016_chatgpt_exactly_once missing';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version = '017_proposal_plan_tree_workflow') THEN
+        RAISE EXCEPTION 'migration 017_proposal_plan_tree_workflow missing';
     END IF;
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns
@@ -225,6 +240,11 @@ printf '%s\n' 'Composer DOM text verification: PASS'
 printf '%s\n' 'Single active planning request guard: PASS'
 printf '%s\n' 'Post-send automatic retry blocked: PASS'
 printf '%s\n' 'Visible noVNC runtime guard: PASS'
+printf '%s\n' 'Professional proposal workflow: PASS'
+printf '%s\n' 'Official proposal conversion: PASS'
+printf '%s\n' 'Message soft deletion: PASS'
+printf '%s\n' 'Proposal-to-PLAN-TREE workflow: PASS'
+printf '%s\n' 'Nginx, Stage tests and GitHub prompt policy: PASS'
 printf '%s\n' 'Per-project GitHub credentials: PASS'
 printf '%s\n' 'STAGEPILOT_UNIFIED_PROJECT=PASS'
 printf 'Finished: %s\n' "$(date -u +%FT%TZ)"

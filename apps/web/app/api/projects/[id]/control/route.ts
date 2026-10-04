@@ -12,6 +12,8 @@ import { selectProjectChatAccountRequest, registerProjectConversationRequest } f
 import {
     addPlanningMessageRequest,
     approveProjectPlanRequest,
+    deletePlanningMessageRequest,
+    finalizeOfficialProposalRequest,
     requestPlanningEvaluationRequest
 } from '../../../../../lib/planning';
 import {
@@ -111,18 +113,27 @@ export async function POST(
             case 'planning-comment':
                 result = {
                     message: await addPlanningMessageRequest(id, String(body.content ?? '')),
-                    request: await requestPlanningEvaluationRequest(id)
+                    request: await requestPlanningEvaluationRequest(id, 'proposal')
                 };
                 break;
             case 'planning-evaluate':
-                result = await requestPlanningEvaluationRequest(id);
+                result = await requestPlanningEvaluationRequest(id, 'proposal');
+                break;
+            case 'message-delete':
+                result = await deletePlanningMessageRequest(id, String(body.messageId ?? ''));
+                break;
+            case 'proposal-finalize':
+                result = await finalizeOfficialProposalRequest(id, String(body.messageId ?? ''));
+                break;
+            case 'plan-tree-generate':
+                result = await requestPlanningEvaluationRequest(id, 'plan_tree');
                 break;
             case 'plan-approve':
                 result = await approveProjectPlanRequest(id, Number(body.version), String(body.repositoryName ?? ''));
                 break;
             case 'proposal-html':
                 result = await internalProjectRequest(
-                    `/projects/${encodeURIComponent(id)}/planning/plans/${Number(body.version)}/html`,
+                    `/projects/${encodeURIComponent(id)}/planning/official-proposal/html`,
                     {
                         method: 'PATCH',
                         headers: { 'content-type': 'application/json' },

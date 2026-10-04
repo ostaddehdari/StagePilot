@@ -152,7 +152,9 @@ async function recoverStaleClaims() {
                         ELSE false
                     END
                 )
-            WHERE request_type = 'project_plan'
+            WHERE request_type IN (
+                'project_plan', 'project_proposal', 'project_plan_tree'
+            )
               AND status IN ('processing', 'sent', 'waiting_response')
               AND claimed_at < now() - interval '30 minutes'
             RETURNING id, project_id, status, send_attempts
@@ -183,7 +185,7 @@ async function recoverStaleClaims() {
 async function processOne() {
     const planning = await claimPlanningRequest(db, workerKey);
     if (planning) {
-        currentJob = { type: 'project_plan', id: planning.id, projectId: planning.project_id };
+        currentJob = { type: planning.request_type, id: planning.id, projectId: planning.project_id };
         await heartbeat('busy');
         const result = await processPlanningRequest(db, planning);
         emit('planning.completed', result);

@@ -41,6 +41,50 @@ export type ProjectPlan = {
     stages: PlanStage[];
 };
 
+export type ProjectProposal = {
+    schemaVersion: 'stagepilot.project-proposal.v1';
+    title: string;
+    executiveSummary: string;
+    problemStatement: string;
+    objectives: string[];
+    targetUsers: string[];
+    scope: {
+        inScope: string[];
+        outOfScope: string[];
+    };
+    functionalRequirements: Array<{
+        id: string;
+        title: string;
+        description: string;
+        priority: string;
+        acceptanceCriteria: string[];
+    }>;
+    nonFunctionalRequirements: string[];
+    architecture: {
+        overview: string;
+        components: string[];
+        integrations: string[];
+        security: string[];
+        operations: string[];
+    };
+    technologyRecommendations: Array<{
+        area: string;
+        choice: string;
+        rationale: string;
+        tradeoffs: string[];
+    }>;
+    qualityStrategy: {
+        testLevels: string[];
+        stageExitPolicy: string[];
+        observability: string[];
+    };
+    delivery: {
+        assumptions: string[];
+        constraints: string[];
+        risks: string[];
+    };
+};
+
 
 function text(
     value: unknown,
@@ -177,6 +221,124 @@ function objectValue(
 
     return value as JsonObject;
 
+}
+
+
+export function validateProjectProposal(
+    input: unknown
+): ProjectProposal {
+
+    const value = objectValue(input, 'project_proposal');
+
+    if (value.schemaVersion !== 'stagepilot.project-proposal.v1') {
+        throw new Error('UNSUPPORTED_PROJECT_PROPOSAL_SCHEMA');
+    }
+
+    const scope = objectValue(value.scope, 'proposal_scope');
+    const architecture = objectValue(value.architecture, 'proposal_architecture');
+    const quality = objectValue(value.qualityStrategy, 'proposal_quality_strategy');
+    const delivery = objectValue(value.delivery, 'proposal_delivery');
+
+    if (!Array.isArray(value.functionalRequirements) || value.functionalRequirements.length === 0) {
+        throw new Error('PROPOSAL_FUNCTIONAL_REQUIREMENTS_REQUIRED');
+    }
+
+    const functionalRequirements = value.functionalRequirements.map((raw, index) => {
+        const requirement = objectValue(raw, `functional_requirement_${index + 1}`);
+        return {
+            id: text(requirement.id, 'functional_requirement_id', 40),
+            title: text(requirement.title, 'functional_requirement_title', 300),
+            description: text(requirement.description, 'functional_requirement_description', 5_000),
+            priority: typeof requirement.priority === 'string' && requirement.priority.trim()
+                ? requirement.priority.trim().slice(0, 40)
+                : 'must',
+            acceptanceCriteria: textArray(
+                requirement.acceptanceCriteria,
+                'functional_requirement_acceptance_criteria'
+            )
+        };
+    });
+
+    const technologyRecommendations = Array.isArray(value.technologyRecommendations)
+        ? value.technologyRecommendations.map((raw, index) => {
+            const technology = objectValue(raw, `proposal_technology_${index + 1}`);
+            return {
+                area: text(technology.area, 'proposal_technology_area', 120),
+                choice: text(technology.choice, 'proposal_technology_choice', 300),
+                rationale: text(technology.rationale, 'proposal_technology_rationale', 3_000),
+                tradeoffs: Array.isArray(technology.tradeoffs)
+                    ? textArray(technology.tradeoffs, 'proposal_technology_tradeoffs', 0)
+                    : []
+            };
+        })
+        : [];
+
+    return {
+        schemaVersion: 'stagepilot.project-proposal.v1',
+        title: text(value.title, 'proposal_title', 300),
+        executiveSummary: text(value.executiveSummary, 'proposal_executive_summary', 30_000),
+        problemStatement: text(value.problemStatement, 'proposal_problem_statement', 30_000),
+        objectives: textArray(value.objectives, 'proposal_objectives'),
+        targetUsers: textArray(value.targetUsers, 'proposal_target_users'),
+        scope: {
+            inScope: textArray(scope.inScope, 'proposal_in_scope'),
+            outOfScope: Array.isArray(scope.outOfScope)
+                ? textArray(scope.outOfScope, 'proposal_out_of_scope', 0)
+                : []
+        },
+        functionalRequirements,
+        nonFunctionalRequirements: Array.isArray(value.nonFunctionalRequirements)
+            ? textArray(value.nonFunctionalRequirements, 'proposal_non_functional_requirements', 0)
+            : [],
+        architecture: {
+            overview: text(architecture.overview, 'proposal_architecture_overview', 30_000),
+            components: textArray(architecture.components, 'proposal_architecture_components'),
+            integrations: Array.isArray(architecture.integrations)
+                ? textArray(architecture.integrations, 'proposal_architecture_integrations', 0)
+                : [],
+            security: Array.isArray(architecture.security)
+                ? textArray(architecture.security, 'proposal_architecture_security', 0)
+                : [],
+            operations: Array.isArray(architecture.operations)
+                ? textArray(architecture.operations, 'proposal_architecture_operations', 0)
+                : []
+        },
+        technologyRecommendations,
+        qualityStrategy: {
+            testLevels: textArray(quality.testLevels, 'proposal_test_levels'),
+            stageExitPolicy: textArray(quality.stageExitPolicy, 'proposal_stage_exit_policy'),
+            observability: Array.isArray(quality.observability)
+                ? textArray(quality.observability, 'proposal_observability', 0)
+                : []
+        },
+        delivery: {
+            assumptions: Array.isArray(delivery.assumptions)
+                ? textArray(delivery.assumptions, 'proposal_assumptions', 0)
+                : [],
+            constraints: Array.isArray(delivery.constraints)
+                ? textArray(delivery.constraints, 'proposal_constraints', 0)
+                : [],
+            risks: Array.isArray(delivery.risks)
+                ? textArray(delivery.risks, 'proposal_risks', 0)
+                : []
+        }
+    };
+}
+
+
+function escapeHtml(value: unknown) {
+    return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+}
+
+
+function proposalHtml(proposal: ProjectProposal) {
+    const list = (items: string[]) => `<ul>${items.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
+    return `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><style>body{font-family:Vazirmatn,Tahoma,sans-serif;line-height:2;color:#172033;padding:32px;max-width:1100px;margin:auto}h1,h2{color:#312e81}section{margin:18px 0;padding:18px;border:1px solid #e4e7ec;border-radius:16px;background:#fff}.req{margin:10px 0;padding:12px;border-right:4px solid #6366f1;background:#f8faff}small{color:#667085}</style></head><body><h1>${escapeHtml(proposal.title)}</h1><section><h2>خلاصه اجرایی</h2><p>${escapeHtml(proposal.executiveSummary)}</p></section><section><h2>مسئله و اهداف</h2><p>${escapeHtml(proposal.problemStatement)}</p>${list(proposal.objectives)}</section><section><h2>دامنه</h2><h3>داخل دامنه</h3>${list(proposal.scope.inScope)}<h3>خارج از دامنه</h3>${list(proposal.scope.outOfScope)}</section><section><h2>نیازمندی‌های عملکردی</h2>${proposal.functionalRequirements.map(item => `<div class="req"><strong>${escapeHtml(item.id)} — ${escapeHtml(item.title)}</strong><p>${escapeHtml(item.description)}</p><small>${escapeHtml(item.priority)}</small>${list(item.acceptanceCriteria)}</div>`).join('')}</section><section><h2>معماری پیشنهادی</h2><p>${escapeHtml(proposal.architecture.overview)}</p>${list(proposal.architecture.components)}</section><section><h2>کیفیت و خروج هر Stage</h2>${list(proposal.qualityStrategy.testLevels)}${list(proposal.qualityStrategy.stageExitPolicy)}</section></body></html>`;
 }
 
 
@@ -405,7 +567,7 @@ export function validateProjectPlan(
 }
 
 
-export function buildProjectPlanningPrompt({
+export function buildProjectProposalPrompt({
     projectName,
     requestText,
     description,
@@ -423,23 +585,86 @@ export function buildProjectPlanningPrompt({
         .join('\n\n');
 
     return [
-        'STAGEPILOT_PROJECT_DISCOVERY_V2',
+        'STAGEPILOT_PROFESSIONAL_PROPOSAL_V1',
         `PROJECT_NAME: ${projectName}`,
         `DESCRIPTION:\n${description ?? ''}`,
         `INITIAL_IDEA:\n${requestText}`,
         conversation ? `DISCUSSION:\n${conversation}` : '',
-        `TASK:
-1. Evaluate the idea in plain language.
-2. Recommend practical backend, frontend, database, queue, deployment and testing choices with trade-offs.
-3. Respect every constraint in the discussion.
-4. When enough information exists, produce a detailed Stage/Work plan.
-5. Each Work must have at least one verifiable acceptance criterion.
-6. Dependencies must reference valid Work ids and must not contain cycles.
+        `ROLE:
+You are a senior product strategist, solution architect, UX lead, security engineer and delivery manager.
+
+TASK:
+1. Turn the initial idea and complete discussion into a professional, implementation-ready project proposal.
+2. Resolve contradictions in favor of the newest explicit user instruction. Never invent a confirmed fact; list uncertainty as assumptions or risks.
+3. Define measurable objectives, target users, boundaries, prioritized requirements and testable acceptance criteria.
+4. Recommend practical frontend, backend, database, queue, AI, security, observability, deployment and testing technologies with rationale and trade-offs.
+5. Include architecture, integrations, security, operations, non-functional requirements, quality strategy and a strict Stage exit policy.
+6. Write proposalMarkdown in professional Persian for direct review by a non-technical project owner.
+7. Do NOT create Stage/Work items yet. This is the official proposal candidate only.
+
+Return exactly one JSON object and no Markdown fence:
+{
+  "responseType": "project_proposal",
+  "summary": "خلاصه کوتاه نتیجه تحلیل",
+  "proposalMarkdown": "پروپوزال کامل و خوانا به زبان فارسی",
+  "proposal": {
+    "schemaVersion": "stagepilot.project-proposal.v1",
+    "title": "...",
+    "executiveSummary": "...",
+    "problemStatement": "...",
+    "objectives": ["..."],
+    "targetUsers": ["..."],
+    "scope": {"inScope":["..."],"outOfScope":["..."]},
+    "functionalRequirements": [{"id":"FR-01","title":"...","description":"...","priority":"must","acceptanceCriteria":["..."]}],
+    "nonFunctionalRequirements": ["..."],
+    "architecture": {"overview":"...","components":["..."],"integrations":["..."],"security":["..."],"operations":["..."]},
+    "technologyRecommendations": [{"area":"backend","choice":"...","rationale":"...","tradeoffs":["..."]}],
+    "qualityStrategy": {"testLevels":["..."],"stageExitPolicy":["..."],"observability":["..."]},
+    "delivery": {"assumptions":["..."],"constraints":["..."],"risks":["..."]}
+  }
+}`
+    ].filter(Boolean).join('\n\n');
+}
+
+
+export function buildProjectPlanTreePrompt({
+    projectName,
+    proposal,
+    settings
+}: {
+    projectName: string;
+    proposal: ProjectProposal;
+    settings: JsonObject;
+}) {
+    return [
+        'STAGEPILOT_PROPOSAL_TO_PLAN_TREE_V1',
+        `PROJECT_NAME: ${projectName}`,
+        `REPOSITORY_NAME: ${String(settings.repositoryName ?? '')}`,
+        `PUBLIC_SITE_ORIGIN: ${String(settings.publicOrigin ?? 'https://srun.ir/StagePilot')}`,
+        `OFFICIAL_PROPOSAL_JSON:\n${JSON.stringify(proposal, null, 2)}`,
+        `ROLE:
+You are a principal software architect, technical program manager, DevOps engineer and QA lead.
+
+TASK:
+Convert the approved proposal into a complete, dependency-safe, execution-ready Stage/Work tree.
+
+MANDATORY PLANNING RULES:
+1. Treat OFFICIAL_PROPOSAL_JSON as the authoritative scope and preserve every accepted requirement.
+2. Use stable IDs S01, S02... and S01-W01, S01-W02... . Dependencies must reference valid Work IDs and contain no cycles.
+3. Make every Work small enough for one controlled AI execution cycle with concrete, independently verifiable acceptance criteria.
+4. Include architecture, database/migrations, backend/API, frontend/UX, security, observability, documentation, deployment and operations where applicable.
+5. Always include a dedicated deployment Work that creates the public page/route on the configured site URL, configures and validates Nginx reverse-proxy/static routing, preserves HTTPS/base-path behavior, exposes a health check and verifies the public URL with an HTTP smoke test.
+6. Every implementation Work must finish with relevant automated tests and evidence. Generated code alone never completes a Work.
+7. The FINAL Work of EVERY Stage must be titled "Stage Exit Verification" and run applicable build, lint/typecheck, unit, integration, security, migration, browser/E2E, HTTP smoke and regression tests. All must pass before the next Stage.
+8. Every Work must inspect its diff, exclude secrets/runtime files, commit only after tests pass with a Work-specific message and record the commit SHA.
+9. Push every successful Work commit to the configured GitHub repository/branch and verify the remote SHA. Every Stage Exit Verification confirms all Stage commits exist on GitHub.
+10. The final Stage must cover production deployment, Nginx validation/reload, public URL E2E verification, monitoring/log verification, rollback evidence, final GitHub sync and completion acceptance.
+11. Produce pending executable nodes only; never mark a Stage or Work done in this response.
 
 Return exactly one JSON object and no Markdown fence:
 {
   "responseType": "project_plan",
-  "summary": "short evaluation",
+  "summary": "خلاصه ساخت درخت اجرایی",
   "plan": {
     "schemaVersion": "stagepilot.project-plan.v1",
     "projectName": "...",
@@ -447,23 +672,17 @@ Return exactly one JSON object and no Markdown fence:
     "technologies": [{"area":"backend","choice":"...","reason":"..."}],
     "assumptions": ["..."],
     "stages": [{
-      "id": "S01",
-      "title": "...",
-      "objective": "...",
-      "weight": 1,
-      "acceptanceCriteria": ["..."],
+      "id": "S01", "title": "...", "objective": "...", "weight": 1,
+      "acceptanceCriteria": ["all stage tests pass", "all commits are verified on GitHub"],
       "works": [{
-        "id": "S01-W01",
-        "title": "...",
-        "objective": "...",
-        "weight": 1,
+        "id": "S01-W01", "title": "...", "objective": "...", "weight": 1,
         "dependsOn": [],
-        "acceptanceCriteria": ["..."]
+        "acceptanceCriteria": ["verifiable result", "tests pass", "commit SHA and GitHub remote SHA recorded"]
       }]
     }]
   }
 }`
-    ].filter(Boolean).join('\n\n');
+    ].join('\n\n');
 }
 
 
@@ -486,6 +705,7 @@ export async function getPlanningWorkspace(
                 `SELECT id, revision, role, message_type, content, payload, created_at
                  FROM project_planning_messages
                  WHERE project_id = $1::uuid
+                   AND deleted_at IS NULL
                  ORDER BY created_at ASC
                  LIMIT 300`,
                 [projectId]
@@ -504,7 +724,9 @@ export async function getPlanningWorkspace(
                         claimed_by, next_attempt_at, created_at, completed_at
                  FROM prompt_requests
                  WHERE project_id = $1::uuid
-                   AND request_type = 'project_plan'
+                   AND request_type IN (
+                        'project_plan', 'project_proposal', 'project_plan_tree'
+                   )
                  ORDER BY created_at DESC
                  LIMIT 20`,
                 [projectId]
@@ -519,7 +741,9 @@ export async function getPlanningWorkspace(
         project: projectResult.rows[0],
         messages: messagesResult.rows,
         plans: plansResult.rows,
-        promptRequests: promptResult.rows
+        promptRequests: promptResult.rows,
+        officialProposal:
+            projectResult.rows[0].settings?.officialProposal ?? null
     };
 }
 
@@ -541,7 +765,10 @@ export async function addPlanningMessage(
         throw new Error('INVALID_PLANNING_MESSAGE_ROLE');
     }
 
-    if (!['idea', 'evaluation', 'technology', 'proposal', 'comment', 'decision', 'prompt'].includes(messageType)) {
+    if (![
+        'idea', 'evaluation', 'technology', 'proposal', 'proposal_draft',
+        'official_proposal', 'plan_tree', 'comment', 'decision', 'prompt'
+    ].includes(messageType)) {
         throw new Error('INVALID_PLANNING_MESSAGE_TYPE');
     }
 
@@ -566,8 +793,14 @@ export async function addPlanningMessage(
 
 
 export async function requestPlanningEvaluation(
-    projectId: string
+    projectId: string,
+    workflowInput: unknown = 'proposal'
 ) {
+
+    const workflow = workflowInput === 'plan_tree' ? 'plan_tree' : 'proposal';
+    const requestType = workflow === 'plan_tree'
+        ? 'project_plan_tree'
+        : 'project_proposal';
 
     const db = getDatabasePool();
     const client = await db.connect();
@@ -577,6 +810,7 @@ export async function requestPlanningEvaluation(
 
         const projectResult = await client.query(
             `SELECT p.id, p.name, p.description, p.current_plan_revision,
+                    p.settings,
                     p.selected_chat_account_id,
                     r.request_text,
                     c.id AS conversation_id
@@ -613,7 +847,9 @@ export async function requestPlanningEvaluation(
                     true AS already_active
              FROM prompt_requests
              WHERE project_id = $1::uuid
-               AND request_type = 'project_plan'
+               AND request_type IN (
+                    'project_plan', 'project_proposal', 'project_plan_tree'
+               )
                AND status IN (
                     'created', 'retry', 'processing',
                     'sent', 'waiting_response'
@@ -688,22 +924,32 @@ export async function requestPlanningEvaluation(
             `SELECT role, content
              FROM project_planning_messages
              WHERE project_id = $1::uuid
+               AND deleted_at IS NULL
+               AND role IN ('user', 'assistant')
              ORDER BY created_at ASC
              LIMIT 300`,
             [projectId]
         );
 
-        const promptText = buildProjectPlanningPrompt({
-            projectName: project.name,
-            requestText: project.request_text,
-            description: project.description,
-            messages: messagesResult.rows
-        });
+        const promptText = workflow === 'plan_tree'
+            ? buildProjectPlanTreePrompt({
+                projectName: project.name,
+                proposal: validateProjectProposal(
+                    project.settings?.officialProposal?.proposal
+                ),
+                settings: project.settings ?? {}
+            })
+            : buildProjectProposalPrompt({
+                projectName: project.name,
+                requestText: project.request_text,
+                description: project.description,
+                messages: messagesResult.rows
+            });
 
         const digest = createHash('sha256')
             .update(promptText, 'utf8')
             .digest('hex');
-        const requestKey = `plan:${projectId}:${Date.now()}:${digest.slice(0, 12)}`;
+        const requestKey = `${workflow}:${projectId}:${Date.now()}:${digest.slice(0, 12)}`;
 
         const templateResult = await client.query(
             `SELECT id
@@ -721,11 +967,12 @@ export async function requestPlanningEvaluation(
              )
              VALUES (
                 $1::uuid, $2::uuid, $3::uuid, $4,
-                'project_plan', $5,
+                $8::text, $5,
                 jsonb_build_object(
                     'promptSha256', $6::text,
                     'planRevision', $7::integer,
-                    'source', 'planning_workspace'
+                    'source', 'planning_workspace',
+                    'workflow', $9::text
                 ),
                 $7,
                 'created'
@@ -738,7 +985,9 @@ export async function requestPlanningEvaluation(
                 requestKey,
                 promptText,
                 digest,
-                project.current_plan_revision
+                project.current_plan_revision,
+                requestType,
+                workflow
             ]
         );
 
@@ -748,14 +997,17 @@ export async function requestPlanningEvaluation(
              )
              VALUES (
                 $1::uuid, $2, 'system', 'prompt',
-                'درخواست ارزیابی و تولید پروپوزال برای ChatGPT ثبت شد.',
+                $5::text,
                 jsonb_build_object('promptRequestId', $3::uuid, 'requestKey', $4::text)
              )`,
             [
                 projectId,
                 project.current_plan_revision,
                 requestResult.rows[0].id,
-                requestKey
+                requestKey,
+                workflow === 'plan_tree'
+                    ? 'درخواست تبدیل پروپوزال رسمی به Stage و Work برای ChatGPT ثبت شد.'
+                    : 'درخواست ساخت پروپوزال حرفه‌ای برای ChatGPT ثبت شد.'
             ]
         );
 
@@ -766,7 +1018,7 @@ export async function requestPlanningEvaluation(
              ) VALUES (
                 $1::uuid, 'prompt_request', $2::text,
                 'planning.request.queued', 'info', 'user', 'private-admin',
-                'درخواست ارزیابی در صف ChatGPT قرار گرفت.',
+                $6::text,
                 jsonb_build_object(
                     'requestKey', $3::text,
                     'conversationId', $4::uuid,
@@ -778,7 +1030,10 @@ export async function requestPlanningEvaluation(
                 requestResult.rows[0].id,
                 requestKey,
                 project.conversation_id,
-                project.selected_chat_account_id
+                project.selected_chat_account_id,
+                workflow === 'plan_tree'
+                    ? 'درخواست ساخت PLAN TREE در صف ChatGPT قرار گرفت.'
+                    : 'درخواست ساخت پروپوزال حرفه‌ای در صف ChatGPT قرار گرفت.'
             ]
         );
 
@@ -790,6 +1045,160 @@ export async function requestPlanningEvaluation(
     } finally {
         client.release();
     }
+}
+
+
+export async function deletePlanningMessage(
+    projectId: string,
+    messageId: string
+) {
+    const db = getDatabasePool();
+    const result = await db.query(
+        `UPDATE project_planning_messages
+         SET deleted_at = now(), deleted_by = 'private-admin'
+         WHERE id = $2::uuid
+           AND project_id = $1::uuid
+           AND deleted_at IS NULL
+         RETURNING id, message_type, created_at`,
+        [projectId, messageId]
+    );
+    if (result.rowCount !== 1) throw new Error('PLANNING_MESSAGE_NOT_FOUND');
+    await db.query(
+        `INSERT INTO events (
+            project_id, entity_type, entity_id, event_type, severity,
+            actor_type, actor_id, message, data
+         ) VALUES (
+            $1::uuid, 'planning_message', $2::text,
+            'planning.message.deleted', 'info', 'user', 'private-admin',
+            'پیام گفت‌وگو از نمای پروژه حذف شد.',
+            jsonb_build_object('messageType', $3::text)
+         )`,
+        [projectId, messageId, result.rows[0].message_type]
+    );
+    return { deleted: true, id: result.rows[0].id };
+}
+
+
+export async function finalizeOfficialProposal(
+    projectId: string,
+    messageId: string
+) {
+    const db = getDatabasePool();
+    const client = await db.connect();
+    try {
+        await client.query('BEGIN');
+        const result = await client.query(
+            `SELECT m.id, m.content, m.payload, p.settings,
+                    p.current_plan_revision
+             FROM project_planning_messages m
+             JOIN projects p ON p.id = m.project_id
+             WHERE m.id = $2::uuid
+               AND m.project_id = $1::uuid
+               AND m.role = 'assistant'
+               AND m.message_type = 'proposal_draft'
+               AND m.deleted_at IS NULL
+               AND p.deleted_at IS NULL
+             FOR UPDATE OF p`,
+            [projectId, messageId]
+        );
+        if (result.rowCount !== 1) throw new Error('PROPOSAL_DRAFT_NOT_FOUND');
+        const row = result.rows[0];
+        const proposal = validateProjectProposal(row.payload?.proposal);
+        const previousVersion = Number(row.settings?.officialProposal?.version ?? 0);
+        const officialProposal = {
+            version: previousVersion + 1,
+            status: 'approved',
+            title: proposal.title,
+            summary: proposal.executiveSummary,
+            proposal,
+            proposalMarkdown: row.content,
+            proposalHtml: proposalHtml(proposal),
+            sourceMessageId: messageId,
+            finalizedAt: new Date().toISOString()
+        };
+        await client.query(
+            `UPDATE projects
+             SET settings = COALESCE(settings, '{}'::jsonb) || jsonb_build_object(
+                    'officialProposal', $2::jsonb,
+                    'planningStatus', 'official_proposal_ready'
+                 ), updated_at = now()
+             WHERE id = $1::uuid`,
+            [projectId, JSON.stringify(officialProposal)]
+        );
+        await client.query(
+            `INSERT INTO project_planning_messages (
+                project_id, revision, role, message_type, content, payload
+             ) VALUES (
+                $1::uuid, GREATEST($2::integer, 1), 'user', 'official_proposal',
+                'این پاسخ به‌عنوان پروپوزال رسمی پروژه تأیید شد.',
+                jsonb_build_object(
+                    'sourceMessageId', $3::uuid,
+                    'proposalVersion', $4::integer
+                )
+             )`,
+            [projectId, row.current_plan_revision, messageId, officialProposal.version]
+        );
+        await client.query(
+            `INSERT INTO events (
+                project_id, entity_type, entity_id, event_type, severity,
+                actor_type, actor_id, message, data
+             ) VALUES (
+                $1::uuid, 'planning_message', $2::text,
+                'project.proposal.finalized', 'info', 'user', 'private-admin',
+                'پاسخ ChatGPT به پروپوزال رسمی پروژه تبدیل شد.',
+                jsonb_build_object('proposalVersion', $3::integer)
+             )`,
+            [projectId, messageId, officialProposal.version]
+        );
+        await client.query('COMMIT');
+        return officialProposal;
+    } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+    } finally {
+        client.release();
+    }
+}
+
+
+export async function saveOfficialProposalHtml(
+    projectId: string,
+    htmlInput: unknown
+) {
+    const html = typeof htmlInput === 'string' ? htmlInput.trim() : '';
+    if (!html) throw new Error('PROPOSAL_HTML_REQUIRED');
+    if (html.length > 500_000) throw new Error('PROPOSAL_HTML_TOO_LONG');
+    if (/<script\b|\son[a-z]+\s*=|javascript:/i.test(html)) {
+        throw new Error('UNSAFE_PROPOSAL_HTML');
+    }
+    const db = getDatabasePool();
+    const result = await db.query(
+        `UPDATE projects
+         SET settings = jsonb_set(
+                COALESCE(settings, '{}'::jsonb),
+                '{officialProposal,proposalHtml}',
+                to_jsonb($2::text),
+                false
+             ), updated_at = now()
+         WHERE id = $1::uuid
+           AND deleted_at IS NULL
+           AND settings ? 'officialProposal'
+         RETURNING settings->'officialProposal' AS official_proposal`,
+        [projectId, html]
+    );
+    if (result.rowCount !== 1) throw new Error('OFFICIAL_PROPOSAL_NOT_FOUND');
+    await db.query(
+        `INSERT INTO events (
+            project_id, entity_type, entity_id, event_type, severity,
+            actor_type, actor_id, message, data
+         ) VALUES (
+            $1::uuid, 'project', $1::text, 'proposal.html.updated', 'info',
+            'user', 'private-admin', 'HTML پروپوزال رسمی ویرایش شد.',
+            jsonb_build_object('length', $2::integer)
+         )`,
+        [projectId, html.length]
+    );
+    return result.rows[0].official_proposal;
 }
 
 

@@ -153,17 +153,49 @@ export async function controlProjectAutomationNode(
             const selection = kind === 'work'
                 ? { selectedWorkId: nodeId, selectedStageId: null }
                 : { selectedWorkId: null, selectedStageId: nodeId };
+            const attemptBudgetResult = kind === 'work'
+                ? await client.query(
+                    `SELECT LEAST(20, GREATEST(3, COALESCE(MAX(attempt), 0) + 1))::int
+                            AS requested_max_attempts
+                     FROM project_automation_attempts
+                     WHERE project_id = $1::uuid AND work_id = $2::uuid`,
+                    [projectId, nodeId]
+                )
+                : await client.query(
+                    `SELECT LEAST(20, GREATEST(3, COALESCE(MAX(attempt), 0) + 1))::int
+                            AS requested_max_attempts
+                     FROM project_automation_attempts
+                     WHERE project_id = $1::uuid AND stage_id = $2::uuid`,
+                    [projectId, nodeId]
+                );
+            const requestedMaxAttempts = Number(
+                attemptBudgetResult.rows[0]?.requested_max_attempts ?? 3
+            );
             await client.query(
                 `INSERT INTO project_automation_state (
-                    project_id, status, mode, started_at, metadata
-                 ) VALUES ($1::uuid, 'queued', 'automatic', now(), $2::jsonb)
+                    project_id, status, mode, started_at, metadata,
+                    max_work_attempts
+                 ) VALUES ($1::uuid, 'queued', 'automatic', now(), $2::jsonb, $3::int)
                  ON CONFLICT (project_id) DO UPDATE SET
                     status = 'queued', lease_owner = NULL, lease_expires_at = NULL,
                     last_error = NULL, completed_at = NULL,
+                    max_work_attempts = GREATEST(
+                        project_automation_state.max_work_attempts,
+                        EXCLUDED.max_work_attempts
+                    ),
                     metadata = (project_automation_state.metadata - 'selectedWorkId' - 'selectedStageId')
                         || EXCLUDED.metadata,
                     updated_at = now()`,
-                [projectId, JSON.stringify({ ...selection, lastAction: action, selectedNodeKind: kind, selectedNodeId: nodeId })]
+                [
+                    projectId,
+                    JSON.stringify({
+                        ...selection,
+                        lastAction: action,
+                        selectedNodeKind: kind,
+                        selectedNodeId: nodeId
+                    }),
+                    requestedMaxAttempts
+                ]
             );
         }
 

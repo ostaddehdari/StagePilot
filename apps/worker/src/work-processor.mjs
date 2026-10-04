@@ -5,12 +5,6 @@ import { sendPromptAndWait } from './browser-transport.mjs';
 import { commitAndPush, executeScripts, runProcess, runVerification } from './process-runner.mjs';
 import { ensureProjectRepository } from './repository-provisioner.mjs';
 
-function cleanJsonResponse(value) {
-    const text = String(value ?? '').trim();
-    const fenced = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-    return fenced ? fenced[1].trim() : text;
-}
-
 export async function claimAutomationProject(db, workerKey) {
     const result = await db.query(
         `UPDATE project_automation_state state
@@ -181,7 +175,10 @@ Rules:
 4. Scripts must be deterministic and non-interactive; every filename must end in .sh.
 5. If execution is unsafe or essential information is missing, return decision_required.
 6. Do not claim success; StagePilot runs tests and Git verification after execution.
-7. REQUEST_MARKER for your internal correlation is ${requestMarker}.`
+7. REQUEST_MARKER for your internal correlation is ${requestMarker}.
+8. The entire reply must be one valid JSON object. Do not add prose, Markdown fences, comments, or a second JSON object.
+9. Encode every line break inside scripts[].content as \\n and escape every quote or backslash required by JSON.
+10. Before replying, validate that the complete reply can be parsed once with JSON.parse and matches the requested schema.`
         ].filter(Boolean).join('\n\n')
     };
 }
@@ -196,6 +193,26 @@ async function storeLog(db, runId, stream, value) {
             [runId, stream, index + 1, chunks[index]]
         );
     }
+}
+
+async function archiveInvalidManagerResponse(
+    db,
+    promptRequestId,
+    rawText,
+    error
+) {
+    const diagnostic = {
+        code: error?.code ?? error?.message ?? 'RESPONSE_VALIDATION_FAILED',
+        message: error?.message ?? String(error),
+        diagnostic: error?.diagnostic ?? null
+    };
+    await db.query(
+        `INSERT INTO prompt_responses (
+            prompt_request_id, response_type, raw_text, parsed_json,
+            extraction_status, is_complete
+         ) VALUES ($1::uuid, NULL, $2, $3::jsonb, 'failed', true)`,
+        [promptRequestId, String(rawText ?? ''), JSON.stringify(diagnostic)]
+    );
 }
 
 export function serializeWorkerError(error) {
@@ -462,8 +479,30 @@ export async function processAutomationProject(db, state) {
             timeoutMs: Number(process.env.STAGEPILOT_AI_RESPONSE_TIMEOUT_MS ?? 240_000),
             onProgress: progress => recordWorkTransportProgress(db, promptRequest, progress)
         });
-        const rawText = cleanJsonResponse(transport.text);
-        const parsed = parseManagerResponse(rawText, { batchKey: runKey });
+        const rawText = String(transport.text ?? '').trim();
+        let parsed;
+        try {
+            parsed = parseManagerResponse(rawText, { batchKey: runKey });
+        } catch (error) {
+            try {
+                await archiveInvalidManagerResponse(
+                    db,
+                    promptRequest.id,
+                    rawText,
+                    error
+                );
+            } catch (archiveError) {
+                if (error && typeof error === 'object') {
+                    error.diagnostic = {
+                        ...(error.diagnostic ?? {}),
+                        archiveFailure: archiveError instanceof Error
+                            ? archiveError.message
+                            : String(archiveError)
+                    };
+                }
+            }
+            throw error;
+        }
         const responseResult = await db.query(
             `INSERT INTO prompt_responses (
                 prompt_request_id, response_type, raw_text, parsed_json,

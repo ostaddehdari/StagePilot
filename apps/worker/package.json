@@ -18,6 +18,7 @@
     "browser:headless": "node browser/headless-session.mjs",
     "manager:plan-test": "node manager/project-plan-contract-selftest.mjs",
     "manager:proposal-test": "node manager/project-proposal-contract-selftest.mjs",
+    "manager:response-test": "node manager/response-parser-selftest.mjs",
     "automation:selftest": "node src/core-automation-selftest.mjs",
     "automation:work-control-test": "node src/work-control-selftest.mjs"
   },

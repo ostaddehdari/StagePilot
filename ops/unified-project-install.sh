@@ -83,6 +83,7 @@ npm ci
 npm run build
 npm run manager:plan-test --workspace @stagepilot/worker
 npm run manager:proposal-test --workspace @stagepilot/worker
+npm run manager:response-test --workspace @stagepilot/worker
 npm run automation:selftest --workspace @stagepilot/worker
 npm run automation:work-control-test --workspace @stagepilot/worker
 npm run browser:composer-test --workspace @stagepilot/worker
@@ -156,10 +157,20 @@ rg -q 'sp-tree-fullscreen' apps/web/components/project-control-center.tsx \
     || fail 'fullscreen PLAN TREE control missing'
 rg -q 'controlProjectAutomationNode' apps/api/src/automation.ts \
     || fail 'Stage and Work controls missing'
+rg -q 'requested_max_attempts' apps/api/src/automation.ts \
+    || fail 'manual failed Work retry budget missing'
 rg -q 'recordWorkTransportProgress' apps/worker/src/work-processor.mjs \
     || fail 'work request transport observability missing'
 rg -q 'serializeWorkerError' apps/worker/src/work-processor.mjs \
     || fail 'detailed Worker error serialization missing'
+rg -q 'balancedObjectCandidates' apps/worker/manager/response-parser.mjs \
+    || fail 'resilient JSON object extraction missing'
+rg -q 'archiveInvalidManagerResponse' apps/worker/src/work-processor.mjs \
+    || fail 'invalid AI response archive missing'
+rg -q 'تشخیص Parser' apps/web/app/'(protected)'/archive/prompts/'[id]'/page.tsx \
+    || fail 'invalid AI response archive diagnostics UI missing'
+rg -q 'jsonResponseRecoveryQueuedAt' database/migrations/023_json_response_recovery.sql \
+    || fail 'invalid JSON failed Work recovery missing'
 rg -q 'workerErrors' apps/api/src/archive.ts \
     || fail 'Prompt archive Worker diagnostics missing'
 rg -q 'promptWorkerError' apps/web/components/project-control-center.tsx \
@@ -205,6 +216,7 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/019_send_uncertai
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/020_plan_tree_visibility.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/021_visible_browser_handoff.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/022_work_request_control.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/023_json_response_recovery.sql
 
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c \
     "SELECT count(*) AS preserved_nonterminal_requests
@@ -265,6 +277,9 @@ BEGIN
     END IF;
     IF NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version = '022_work_request_control') THEN
         RAISE EXCEPTION 'migration 022_work_request_control missing';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version = '023_json_response_recovery') THEN
+        RAISE EXCEPTION 'migration 023_json_response_recovery missing';
     END IF;
     IF EXISTS (
         SELECT 1
@@ -337,6 +352,10 @@ printf '%s\n' 'Four-card AI request navigation: PASS'
 printf '%s\n' 'Prompt archive Worker diagnostics: PASS'
 printf '%s\n' 'AI command Worker error panel: PASS'
 printf '%s\n' 'Worker stack and diagnostic logging: PASS'
+printf '%s\n' 'Resilient JSON response extraction: PASS'
+printf '%s\n' 'Invalid AI response raw archive: PASS'
+printf '%s\n' 'INVALID_JSON_RESPONSE Work recovery: PASS'
+printf '%s\n' 'Manual failed Work retry budget: PASS'
 printf '%s\n' 'Per-project GitHub credentials: PASS'
 printf '%s\n' 'STAGEPILOT_UNIFIED_PROJECT=PASS'
 printf 'Finished: %s\n' "$(date -u +%FT%TZ)"

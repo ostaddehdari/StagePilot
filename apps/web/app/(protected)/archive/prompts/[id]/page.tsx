@@ -306,9 +306,11 @@ export default async function PromptArchivePage({
                                         <code>
 
                                             {
-                                                t(
-                                                    response.response_type
-                                                )
+                                                typeof response.response_type
+                                                ===
+                                                'string'
+                                                ? response.response_type
+                                                : 'پاسخ نامعتبر'
                                             }
 
                                         </code>
@@ -316,15 +318,43 @@ export default async function PromptArchivePage({
 
                                         <span>
 
-                                            {
-                                                response.is_complete
-                                                ? 'Complete'
-                                                : 'Incomplete'
-                                            }
+                                            {t(response.extraction_status)}
 
                                         </span>
 
                                     </div>
+
+
+                                    {
+                                        response.extraction_status
+                                        ===
+                                        'failed'
+                                        &&
+                                        response.parsed_json
+                                        !==
+                                        null
+                                        &&
+                                        <div className="stagepilot-worker-error mb-3">
+                                            <div className="stagepilot-worker-error-title">
+                                                <span>
+                                                    <i className="fa-solid fa-code" />
+                                                    تشخیص Parser
+                                                </span>
+                                                <code dir="ltr">
+                                                    INVALID AI RESPONSE
+                                                </code>
+                                            </div>
+                                            <pre dir="ltr">
+                                                {
+                                                    JSON.stringify(
+                                                        response.parsed_json,
+                                                        null,
+                                                        2
+                                                    )
+                                                }
+                                            </pre>
+                                        </div>
+                                    }
 
 
                                     <pre

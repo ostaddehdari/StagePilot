@@ -154,6 +154,161 @@ check(
 );
 
 
+const fenced =
+    parseManagerResponse(
+        `پاسخ آماده است:\n\n\`\`\`json\n${valid}\n\`\`\`\n`,
+        {
+            batchKey:
+                'fenced-selftest'
+        }
+    );
+
+
+check(
+    'json-fence-extracted',
+    fenced.responseType
+    ===
+    'script_batch'
+    &&
+    fenced.responseSource
+    ===
+    'json_fence'
+);
+
+
+const proseWrapped =
+    parseManagerResponse(
+        `متن توضیحی قبل از پاسخ\n${valid}\nمتن توضیحی بعد از پاسخ`,
+        {
+            batchKey:
+                'balanced-selftest'
+        }
+    );
+
+
+check(
+    'balanced-json-extracted',
+    proseWrapped.responseType
+    ===
+    'script_batch'
+    &&
+    proseWrapped.responseSource
+    ===
+    'balanced_object'
+);
+
+
+const bracesInsideScript =
+    parseManagerResponse(
+        `before ${JSON.stringify({
+            responseType:
+                'script_batch',
+
+            summary:
+                'braces inside strings',
+
+            scripts: [{
+                order:
+                    1,
+
+                name:
+                    'braces.sh',
+
+                language:
+                    'bash',
+
+                content:
+                    'printf \'%s\\n\' "{safe}"',
+
+                dependsOn:
+                    []
+            }]
+        })} after`
+    );
+
+
+check(
+    'braces-inside-json-string-preserved',
+    bracesInsideScript.scripts[0].content
+    ===
+    'printf \'%s\\n\' "{safe}"'
+);
+
+
+let ambiguousRejected =
+    false;
+
+
+try {
+
+    parseManagerResponse(
+        `${JSON.stringify({
+            responseType:
+                'report_only',
+
+            summary:
+                'first'
+        })}\n${JSON.stringify({
+            responseType:
+                'report_only',
+
+            summary:
+                'second'
+        })}`
+    );
+
+} catch (error) {
+
+    ambiguousRejected =
+        error?.code
+        ===
+        'AMBIGUOUS_JSON_RESPONSE';
+
+}
+
+
+check(
+    'ambiguous-json-rejected',
+    ambiguousRejected
+);
+
+
+let invalidDiagnosticCaptured =
+    false;
+
+
+try {
+
+    parseManagerResponse(
+        'This response contains no JSON object.'
+    );
+
+} catch (error) {
+
+    invalidDiagnosticCaptured =
+        error?.code
+        ===
+        'INVALID_JSON_RESPONSE'
+        &&
+        Number(
+            error?.diagnostic?.rawLength
+        )
+        >
+        0
+        &&
+        typeof error?.diagnostic?.rawSha256
+        ===
+        'string';
+
+}
+
+
+check(
+    'invalid-json-diagnostic-captured',
+    invalidDiagnosticCaptured
+);
+
+
 let badDependencyRejected =
     false;
 

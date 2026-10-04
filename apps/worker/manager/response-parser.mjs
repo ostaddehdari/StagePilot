@@ -29,6 +29,476 @@ function sha256(
 }
 
 
+function responseError(
+    code,
+    diagnostic
+) {
+
+    const error =
+        new Error(
+            code
+        );
+
+
+    error.code =
+        code;
+
+    error.diagnostic =
+        diagnostic;
+
+
+    return error;
+
+}
+
+
+function balancedObjectCandidates(
+    raw
+) {
+
+    const candidates = [];
+
+    let start =
+        -1;
+
+    let depth =
+        0;
+
+    let inString =
+        false;
+
+    let escaped =
+        false;
+
+
+    for (
+        let index = 0;
+        index < raw.length;
+        index += 1
+    ) {
+
+        const character =
+            raw[index];
+
+
+        if (
+            start < 0
+        ) {
+
+            if (
+                character === '{'
+            ) {
+
+                start =
+                    index;
+
+                depth =
+                    1;
+
+                inString =
+                    false;
+
+                escaped =
+                    false;
+
+            }
+
+
+            continue;
+
+        }
+
+
+        if (
+            inString
+        ) {
+
+            if (
+                escaped
+            ) {
+
+                escaped =
+                    false;
+
+                continue;
+
+            }
+
+
+            if (
+                character === '\\'
+            ) {
+
+                escaped =
+                    true;
+
+                continue;
+
+            }
+
+
+            if (
+                character === '"'
+            ) {
+
+                inString =
+                    false;
+
+            }
+
+
+            continue;
+
+        }
+
+
+        if (
+            character === '"'
+        ) {
+
+            inString =
+                true;
+
+            continue;
+
+        }
+
+
+        if (
+            character === '{'
+        ) {
+
+            depth +=
+                1;
+
+            continue;
+
+        }
+
+
+        if (
+            character !== '}'
+        ) {
+
+            continue;
+
+        }
+
+
+        depth -=
+            1;
+
+
+        if (
+            depth === 0
+        ) {
+
+            candidates.push(
+                raw.slice(
+                    start,
+                    index + 1
+                )
+            );
+
+            start =
+                -1;
+
+        }
+
+    }
+
+
+    return candidates;
+
+}
+
+
+function responseCandidates(
+    raw
+) {
+
+    const candidates = [];
+
+    const seen =
+        new Set();
+
+
+    const add = (
+        source,
+        value
+    ) => {
+
+        const text =
+            String(
+                value ?? ''
+            ).trim();
+
+
+        if (
+            !text
+            ||
+            seen.has(
+                text
+            )
+        ) {
+
+            return;
+
+        }
+
+
+        seen.add(
+            text
+        );
+
+        candidates.push({
+            source,
+            text
+        });
+
+    };
+
+
+    add(
+        'exact',
+        raw
+    );
+
+
+    const fencePattern =
+        /```(?:json)?[ \t]*\r?\n?([\s\S]*?)```/gi;
+
+    let fenceMatch;
+
+
+    while (
+        (
+            fenceMatch =
+                fencePattern.exec(
+                    raw
+                )
+        )
+        !==
+        null
+    ) {
+
+        add(
+            'json_fence',
+            fenceMatch[1]
+        );
+
+    }
+
+
+    for (
+        const value
+        of balancedObjectCandidates(
+            raw
+        )
+    ) {
+
+        add(
+            'balanced_object',
+            value
+        );
+
+    }
+
+
+    return candidates;
+
+}
+
+
+function extractResponseEnvelope(
+    raw
+) {
+
+    const candidates =
+        responseCandidates(
+            raw
+        );
+
+    const syntaxErrors = [];
+
+    const contractErrors = [];
+
+    const valid = [];
+
+
+    for (
+        const candidate
+        of candidates
+    ) {
+
+        let envelope;
+
+
+        try {
+
+            envelope =
+                JSON.parse(
+                    candidate.text
+                );
+
+        } catch (error) {
+
+            syntaxErrors.push({
+                source:
+                    candidate.source,
+
+                message:
+                    error instanceof Error
+                        ? error.message
+                        : String(error)
+            });
+
+            continue;
+
+        }
+
+
+        try {
+
+            assertValidResponseEnvelope(
+                envelope
+            );
+
+        } catch (error) {
+
+            contractErrors.push({
+                source:
+                    candidate.source,
+
+                message:
+                    error instanceof Error
+                        ? error.message
+                        : String(error),
+
+                error
+            });
+
+            continue;
+
+        }
+
+
+        valid.push({
+            ...candidate,
+            envelope
+        });
+
+    }
+
+
+    const diagnostic = {
+        rawLength:
+            raw.length,
+
+        rawSha256:
+            sha256(
+                raw
+            ),
+
+        candidateCount:
+            candidates.length,
+
+        candidateSources:
+            candidates.map(
+                candidate =>
+                    candidate.source
+            ),
+
+        syntaxErrors:
+            syntaxErrors.slice(
+                0,
+                8
+            ),
+
+        contractErrors:
+            contractErrors
+                .slice(
+                    0,
+                    8
+                )
+                .map(
+                    item => ({
+                        source:
+                            item.source,
+
+                        message:
+                            item.message
+                    })
+                )
+    };
+
+
+    if (
+        valid.length === 0
+    ) {
+
+        if (
+            contractErrors.length > 0
+        ) {
+
+            const error =
+                contractErrors[0].error;
+
+
+            if (
+                error
+                &&
+                typeof error === 'object'
+            ) {
+
+                error.code =
+                    error.code
+                    ??
+                    'INVALID_RESPONSE_CONTRACT';
+
+                error.diagnostic =
+                    diagnostic;
+
+            }
+
+
+            throw error;
+
+        }
+
+
+        throw responseError(
+            'INVALID_JSON_RESPONSE',
+            diagnostic
+        );
+
+    }
+
+
+    if (
+        valid.length > 1
+    ) {
+
+        throw responseError(
+            'AMBIGUOUS_JSON_RESPONSE',
+            {
+                ...diagnostic,
+                validSources:
+                    valid.map(
+                        candidate =>
+                            candidate.source
+                    )
+            }
+        );
+
+    }
+
+
+    return valid[0];
+
+}
+
+
 function assertSafeFilename(
     value
 ) {
@@ -142,33 +612,21 @@ export function parseManagerResponse(
     }
 
 
-    let envelope;
-
-
-    try {
-
-        envelope =
-            JSON.parse(
-                raw
-            );
-
-    } catch {
-
-        throw new Error(
-            'INVALID_JSON_RESPONSE'
+    const extracted =
+        extractResponseEnvelope(
+            raw
         );
 
-    }
+    const envelope =
+        extracted.envelope;
 
-
-    assertValidResponseEnvelope(
-        envelope
-    );
+    const jsonText =
+        extracted.text;
 
 
     const responseSha256 =
         sha256(
-            raw
+            jsonText
         );
 
 
@@ -183,6 +641,14 @@ export function parseManagerResponse(
         summary:
             String(
                 envelope.summary ?? ''
+            ),
+
+        responseSource:
+            extracted.source,
+
+        rawResponseSha256:
+            sha256(
+                raw
             ),
 
         responseSha256

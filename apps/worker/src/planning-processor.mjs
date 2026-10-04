@@ -413,7 +413,11 @@ async function persistPlanResponse(db, row, transport) {
         );
         await client.query(
             `UPDATE projects
-             SET settings = COALESCE(settings, '{}'::jsonb) || jsonb_build_object(
+             SET current_plan_revision = CASE
+                    WHEN $4::boolean THEN $2::integer
+                    ELSE current_plan_revision
+                 END,
+                 settings = COALESCE(settings, '{}'::jsonb) || jsonb_build_object(
                     'planningStatus', $3::text,
                     'latestPlanVersion', $2::integer,
                     'approvedPlanVersion', CASE WHEN $4::boolean THEN $2::integer ELSE COALESCE((settings->>'approvedPlanVersion')::integer, 0) END,

@@ -141,6 +141,8 @@ rg -q 'send_uncertain_recovery' apps/worker/src/browser-transport.mjs \
     || fail 'uncertain send response-only recovery missing'
 rg -q 'DISTINCT ON \(failed.project_id\)' database/migrations/019_send_uncertain_recovery.sql \
     || fail 'single recovery request per project guard missing'
+rg -Uq 'current_plan_revision\s*=\s*CASE\s+WHEN \$4::boolean THEN \$2::integer' apps/worker/src/planning-processor.mjs \
+    || fail 'materialized PLAN TREE current revision update missing'
 rg -q "import\('quill'\)" apps/web/components/project-control-center.tsx \
     || fail 'Quill visual proposal editor missing'
 if rg -U 'keyboard\s*\.\s*type\s*\(\s*text\b' apps/worker/browser/chatgpt-adapter.mjs; then
@@ -173,6 +175,7 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/016_chatgpt_exact
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/017_proposal_plan_tree_workflow.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/018_chatgpt_frame_recovery.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/019_send_uncertain_recovery.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/020_plan_tree_visibility.sql
 
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c \
     "SELECT count(*) AS preserved_nonterminal_requests
@@ -225,6 +228,21 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version = '019_send_uncertain_recovery') THEN
         RAISE EXCEPTION 'migration 019_send_uncertain_recovery missing';
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version = '020_plan_tree_visibility') THEN
+        RAISE EXCEPTION 'migration 020_plan_tree_visibility missing';
+    END IF;
+    IF EXISTS (
+        SELECT 1
+        FROM projects p
+        INNER JOIN project_plan_versions ppv
+            ON ppv.project_id = p.id AND ppv.status = 'approved'
+        INNER JOIN stages s
+            ON s.project_id = p.id AND s.revision = ppv.version
+        WHERE p.deleted_at IS NULL
+          AND p.current_plan_revision IS DISTINCT FROM ppv.version
+    ) THEN
+        RAISE EXCEPTION 'approved PLAN TREE is hidden by a stale current_plan_revision';
+    END IF;
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE table_name = 'project_plan_versions' AND column_name = 'proposal_html'
@@ -274,6 +292,7 @@ printf '%s\n' 'Post-send duplicate prevention: PASS'
 printf '%s\n' 'SEND_UNCERTAIN response-only recovery: PASS'
 printf '%s\n' 'Quill visual, HTML source and preview editor: PASS'
 printf '%s\n' 'OpenSearch disabled; PostgreSQL search retained: PASS'
+printf '%s\n' 'Materialized PLAN TREE visibility: PASS'
 printf '%s\n' 'Per-project GitHub credentials: PASS'
 printf '%s\n' 'STAGEPILOT_UNIFIED_PROJECT=PASS'
 printf 'Finished: %s\n' "$(date -u +%FT%TZ)"

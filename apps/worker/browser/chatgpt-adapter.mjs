@@ -1397,14 +1397,33 @@ export async function replaceComposerTextAtomically({
 
 
     /*
-     * insertText is one CDP text insertion and does not
-     * synthesize Enter key events for embedded newlines.
-     * keyboard.type() must never be used for prompts: every
-     * newline can otherwise submit a separate ChatGPT turn.
+     * Use the Chrome DevTools Protocol directly. Puppeteer's
+     * Keyboard API is version-dependent and does not expose
+     * insertText in every supported runtime. Input.insertText is
+     * one atomic insertion and never turns embedded newlines into
+     * Enter key events (which could create multiple ChatGPT turns).
      */
-    await page.keyboard.insertText(
-        text
-    );
+    const cdp =
+        await page.createCDPSession();
+
+
+    try {
+
+        await cdp.send(
+            'Input.insertText',
+            {
+                text
+            }
+        );
+
+    } finally {
+
+        await cdp.detach()
+            .catch(
+                () => {}
+            );
+
+    }
 
 }
 

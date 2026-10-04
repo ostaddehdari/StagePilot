@@ -23,6 +23,15 @@ const prompt = [
 
 const calls = [];
 
+const cdp = {
+    async send(method, params) {
+        calls.push(['cdp.send', method, params]);
+    },
+    async detach() {
+        calls.push(['cdp.detach']);
+    }
+};
+
 const handle = {
     async focus() {
         calls.push(['focus']);
@@ -30,6 +39,10 @@ const handle = {
 };
 
 const page = {
+    async createCDPSession() {
+        calls.push(['createCDPSession']);
+        return cdp;
+    },
     async evaluate(_callback, receivedHandle) {
         assert.equal(receivedHandle, handle);
         calls.push(['select']);
@@ -37,9 +50,6 @@ const page = {
     keyboard: {
         async press(key) {
             calls.push(['press', key]);
-        },
-        async insertText(text) {
-            calls.push(['insertText', text]);
         },
         async type() {
             throw new Error('keyboard.type must never be called for a prompt');
@@ -61,7 +71,9 @@ assert.deepEqual(
         ['focus'],
         ['select'],
         ['press', 'Backspace'],
-        ['insertText', prompt]
+        ['createCDPSession'],
+        ['cdp.send', 'Input.insertText', { text: prompt }],
+        ['cdp.detach']
     ]
 );
 
@@ -77,6 +89,18 @@ const adapterSource = await readFile(
 assert.doesNotMatch(
     adapterSource,
     /keyboard\s*\.\s*type\s*\(\s*text\b/
+);
+
+
+assert.doesNotMatch(
+    adapterSource,
+    /keyboard\s*\.\s*insertText\s*\(/
+);
+
+
+assert.match(
+    adapterSource,
+    /Input\.insertText/
 );
 
 
@@ -97,7 +121,10 @@ process.stdout.write(
         ok: true,
         suite: 'composer-insertion',
         multilineCharacters: prompt.length,
-        insertOperations: calls.filter(call => call[0] === 'insertText').length,
+        insertOperations: calls.filter(
+            call => call[0] === 'cdp.send' && call[1] === 'Input.insertText'
+        ).length,
+        detachedSessions: calls.filter(call => call[0] === 'cdp.detach').length,
         enterKeyEvents: calls.filter(call => call[1] === 'Enter').length
     })}\n`
 );

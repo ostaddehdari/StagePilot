@@ -107,8 +107,11 @@ rg -q "s04-w02-v2" apps/worker/browser/chatgpt-selectors.mjs \
     || fail 'resilient ChatGPT composer selectors missing'
 rg -q 'browser-diagnostics' apps/worker/browser/chatgpt-adapter.mjs \
     || fail 'browser failure diagnostic capture missing'
-rg -q 'keyboard.insertText' apps/worker/browser/chatgpt-adapter.mjs \
-    || fail 'atomic multiline Composer insertion missing'
+rg -q 'Input\.insertText' apps/worker/browser/chatgpt-adapter.mjs \
+    || fail 'atomic CDP multiline Composer insertion missing'
+if rg -U 'keyboard\s*\.\s*insertText\s*\(' apps/worker/browser/chatgpt-adapter.mjs; then
+    fail 'unsupported Puppeteer keyboard.insertText is present'
+fi
 rg -q 'visibleRuntimeIntervention' apps/worker/src/browser-transport.mjs \
     || fail 'visible browser runtime guard missing'
 if rg -U 'keyboard\s*\.\s*type\s*\(\s*text\b' apps/worker/browser/chatgpt-adapter.mjs; then

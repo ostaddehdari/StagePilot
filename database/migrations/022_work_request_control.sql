@@ -8,6 +8,9 @@ CREATE INDEX IF NOT EXISTS idx_prompt_requests_project_visible
     ON prompt_requests(project_id, created_at DESC)
     WHERE deleted_at IS NULL;
 
+CREATE TEMP TABLE stagepilot_duplicate_work_requests
+ON COMMIT DROP
+AS
 WITH ranked AS (
     SELECT pr.id,
            row_number() OVER (
@@ -34,9 +37,15 @@ WITH ranked AS (
       AND ranked.position > 1
     RETURNING pr.id
 )
-SELECT count(*) AS cancelled_duplicate_work_requests
+SELECT id
 FROM duplicates;
 
+SELECT count(*) AS cancelled_duplicate_work_requests
+FROM stagepilot_duplicate_work_requests;
+
+CREATE TEMP TABLE stagepilot_interrupted_work_requests
+ON COMMIT DROP
+AS
 WITH interrupted AS (
     UPDATE prompt_requests pr
     SET status = 'blocked',
@@ -52,33 +61,46 @@ WITH interrupted AS (
       AND pr.status IN ('processing', 'sent', 'waiting_response')
     RETURNING pr.id, pr.project_id, pr.work_id
 )
-SELECT count(*) AS blocked_interrupted_work_requests
+SELECT id, project_id, work_id
 FROM interrupted;
+
+SELECT count(*) AS blocked_interrupted_work_requests
+FROM stagepilot_interrupted_work_requests;
 
 UPDATE project_automation_attempts paa
 SET status = 'blocked',
-    error_text = pr.last_error,
+    error_text = affected.error_text,
     completed_at = COALESCE(paa.completed_at, now())
-FROM prompt_requests pr
-WHERE paa.prompt_request_id = pr.id
-  AND pr.last_error IN (
-      'SUPERSEDED_DUPLICATE_WORK_REQUEST',
-      'DEPLOYMENT_INTERRUPTED_WORK_REQUEST_REVIEW_REQUIRED'
-  )
+FROM (
+    SELECT duplicate_request.id,
+           'SUPERSEDED_DUPLICATE_WORK_REQUEST'::text AS error_text
+    FROM stagepilot_duplicate_work_requests duplicate_request
+    UNION ALL
+    SELECT interrupted.id,
+           'DEPLOYMENT_INTERRUPTED_WORK_REQUEST_REVIEW_REQUIRED'::text AS error_text
+    FROM stagepilot_interrupted_work_requests interrupted
+) affected
+WHERE paa.prompt_request_id = affected.id
   AND paa.status NOT IN ('completed', 'failed', 'blocked');
 
 UPDATE runs run
 SET status = 'blocked', finished_at = COALESCE(run.finished_at, now()),
     result_json = COALESCE(run.result_json, '{}'::jsonb)
-        || jsonb_build_object('error', 'DEPLOYMENT_INTERRUPTED_WORK_REQUEST_REVIEW_REQUIRED')
-FROM project_automation_attempts paa
+        || jsonb_build_object('error', affected.error_text)
+FROM project_automation_attempts paa,
+     (
+         SELECT duplicate_request.id,
+                'SUPERSEDED_DUPLICATE_WORK_REQUEST'::text AS error_text
+         FROM stagepilot_duplicate_work_requests duplicate_request
+         UNION ALL
+         SELECT interrupted.id,
+                'DEPLOYMENT_INTERRUPTED_WORK_REQUEST_REVIEW_REQUIRED'::text AS error_text
+         FROM stagepilot_interrupted_work_requests interrupted
+     ) affected
 WHERE run.project_id = paa.project_id
   AND run.work_id = paa.work_id
   AND run.run_key = paa.run_key
-  AND paa.error_text IN (
-      'SUPERSEDED_DUPLICATE_WORK_REQUEST',
-      'DEPLOYMENT_INTERRUPTED_WORK_REQUEST_REVIEW_REQUIRED'
-  )
+  AND paa.prompt_request_id = affected.id
   AND run.status = 'running';
 
 UPDATE works work
@@ -88,10 +110,9 @@ SET status = 'paused', updated_at = now(),
         'pauseReason', 'interrupted_work_request_requires_review'
     )
 WHERE work.id IN (
-    SELECT DISTINCT pr.work_id
-    FROM prompt_requests pr
-    WHERE pr.last_error = 'DEPLOYMENT_INTERRUPTED_WORK_REQUEST_REVIEW_REQUIRED'
-      AND pr.work_id IS NOT NULL
+    SELECT DISTINCT interrupted.work_id
+    FROM stagepilot_interrupted_work_requests interrupted
+    WHERE interrupted.work_id IS NOT NULL
 )
   AND work.status = 'running';
 
@@ -104,9 +125,9 @@ SET status = 'paused', lease_owner = NULL, lease_expires_at = NULL,
     ),
     updated_at = now()
 WHERE EXISTS (
-    SELECT 1 FROM prompt_requests pr
-    WHERE pr.project_id = state.project_id
-      AND pr.last_error = 'DEPLOYMENT_INTERRUPTED_WORK_REQUEST_REVIEW_REQUIRED'
+    SELECT 1
+    FROM stagepilot_interrupted_work_requests interrupted
+    WHERE interrupted.project_id = state.project_id
 );
 
 INSERT INTO schema_migrations (version)

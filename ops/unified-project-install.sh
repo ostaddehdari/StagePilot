@@ -171,6 +171,10 @@ rg -q 'تشخیص Parser' apps/web/app/'(protected)'/archive/prompts/'[id]'/page
     || fail 'invalid AI response archive diagnostics UI missing'
 rg -q 'jsonResponseRecoveryQueuedAt' database/migrations/023_json_response_recovery.sql \
     || fail 'invalid JSON failed Work recovery missing'
+rg -q 'stagepilot_interrupted_work_requests' database/migrations/022_work_request_control.sql \
+    || fail 'deployment interruption migration is not scoped to current requests'
+rg -q 'invalid_json_response_resumed' database/migrations/024_json_recovery_resume.sql \
+    || fail 'stale JSON recovery pause resume migration missing'
 rg -q 'workerErrors' apps/api/src/archive.ts \
     || fail 'Prompt archive Worker diagnostics missing'
 rg -q 'promptWorkerError' apps/web/components/project-control-center.tsx \
@@ -217,6 +221,7 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/020_plan_tree_vis
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/021_visible_browser_handoff.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/022_work_request_control.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/023_json_response_recovery.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/024_json_recovery_resume.sql
 
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c \
     "SELECT count(*) AS preserved_nonterminal_requests
@@ -280,6 +285,9 @@ BEGIN
     END IF;
     IF NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version = '023_json_response_recovery') THEN
         RAISE EXCEPTION 'migration 023_json_response_recovery missing';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version = '024_json_recovery_resume') THEN
+        RAISE EXCEPTION 'migration 024_json_recovery_resume missing';
     END IF;
     IF EXISTS (
         SELECT 1
@@ -356,6 +364,8 @@ printf '%s\n' 'Resilient JSON response extraction: PASS'
 printf '%s\n' 'Invalid AI response raw archive: PASS'
 printf '%s\n' 'INVALID_JSON_RESPONSE Work recovery: PASS'
 printf '%s\n' 'Manual failed Work retry budget: PASS'
+printf '%s\n' 'Current-only deployment interruption guard: PASS'
+printf '%s\n' 'Stale JSON recovery pause removed: PASS'
 printf '%s\n' 'Per-project GitHub credentials: PASS'
 printf '%s\n' 'STAGEPILOT_UNIFIED_PROJECT=PASS'
 printf 'Finished: %s\n' "$(date -u +%FT%TZ)"

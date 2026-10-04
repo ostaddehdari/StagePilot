@@ -53,7 +53,24 @@ async function projectSnapshot(db, projectId) {
     return result.rows[0];
 }
 
-async function selectNextWork(db, project) {
+export function chooseReadyWork(rows, state) {
+    const completed = new Set(rows.filter(row => row.status === 'completed').map(row => row.work_key));
+    const ready = rows.filter(row => {
+        if (!['pending', 'ready', 'failed'].includes(row.status)) return false;
+        const dependencies = Array.isArray(row.dependencies) ? row.dependencies : [];
+        return dependencies.every(key => completed.has(key));
+    });
+    const selectedWorkId = String(state?.metadata?.selectedWorkId ?? '');
+    const selectedStageId = String(state?.metadata?.selectedStageId ?? '');
+    const candidate = selectedWorkId
+        ? ready.find(row => String(row.id) === selectedWorkId) ?? null
+        : selectedStageId
+            ? ready.find(row => String(row.stage_id) === selectedStageId) ?? null
+            : ready[0] ?? null;
+    return { candidate, completed, ready };
+}
+
+async function selectNextWork(db, project, state) {
     const result = await db.query(
         `SELECT w.*, s.project_id, s.stage_key, s.title AS stage_title,
                 s.description AS stage_description, s.position AS stage_position,
@@ -66,12 +83,7 @@ async function selectNextWork(db, project) {
         [project.id, project.current_plan_revision]
     );
     const rows = result.rows;
-    const completed = new Set(rows.filter(row => row.status === 'completed').map(row => row.work_key));
-    const candidate = rows.find(row => {
-        if (!['pending', 'ready', 'failed'].includes(row.status)) return false;
-        const dependencies = Array.isArray(row.dependencies) ? row.dependencies : [];
-        return dependencies.every(key => completed.has(key));
-    });
+    const { candidate, completed } = chooseReadyWork(rows, state);
     return {
         work: candidate ?? null,
         total: rows.length,
@@ -186,6 +198,31 @@ async function storeLog(db, runId, stream, value) {
     }
 }
 
+async function recordWorkTransportProgress(db, promptRequest, progress) {
+    const stage = String(progress?.stage ?? 'unknown').slice(0, 80);
+    const at = String(progress?.at ?? new Date().toISOString());
+    const activeStatus = stage === 'response_waiting'
+        ? 'waiting_response'
+        : ['send_confirmed', 'send_uncertain_recovery'].includes(stage)
+            ? 'sent'
+            : 'processing';
+    await db.query(
+        `UPDATE prompt_requests
+         SET status = $2,
+             sent_at = CASE
+                WHEN $3::text IN ('send_confirmed', 'send_uncertain_recovery')
+                THEN COALESCE(sent_at, now()) ELSE sent_at END,
+             context_json = COALESCE(context_json, '{}'::jsonb) || jsonb_build_object(
+                'transportStage', $3::text,
+                'transportUpdatedAt', $4::text,
+                'transportHistory', COALESCE(context_json->'transportHistory', '[]'::jsonb)
+                    || $5::jsonb
+             )
+         WHERE id = $1::uuid`,
+        [promptRequest.id, activeStatus, stage, at, JSON.stringify([{ ...progress, stage, at }])]
+    );
+}
+
 async function completeWork(db, { project, work, attemptRow, responseId, runId, execution, verification, gitResult }) {
     const client = await db.connect();
     try {
@@ -268,7 +305,7 @@ export async function processAutomationProject(db, state) {
     const repository = await ensureProjectRepository(db, project.id);
     const workspacePath = repository.workspace.workspace_path;
     project = await maybeRolloverConversation(db, project, workspacePath);
-    const next = await selectNextWork(db, project);
+    const next = await selectNextWork(db, project, state);
     if (!next.work) {
         if (next.total === next.completed) {
             await db.query(
@@ -289,6 +326,14 @@ export async function processAutomationProject(db, state) {
     }
 
     const work = next.work;
+    if (state?.metadata?.selectedWorkId || state?.metadata?.selectedStageId) {
+        await db.query(
+            `UPDATE project_automation_state
+             SET metadata = metadata - 'selectedWorkId' - 'selectedStageId', updated_at = now()
+             WHERE project_id = $1::uuid`,
+            [project.id]
+        );
+    }
     const countResult = await db.query(
         `SELECT COUNT(*)::integer AS count,
                 (array_agg(error_text ORDER BY attempt DESC))[1] AS last_error
@@ -389,7 +434,8 @@ export async function processAutomationProject(db, state) {
             conversationUrl: project.external_url,
             operationId: `work:${promptRequest.id}`,
             promptText: prompt.text,
-            timeoutMs: Number(process.env.STAGEPILOT_AI_RESPONSE_TIMEOUT_MS ?? 240_000)
+            timeoutMs: Number(process.env.STAGEPILOT_AI_RESPONSE_TIMEOUT_MS ?? 240_000),
+            onProgress: progress => recordWorkTransportProgress(db, promptRequest, progress)
         });
         const rawText = cleanJsonResponse(transport.text);
         const parsed = parseManagerResponse(rawText, { batchKey: runKey });
@@ -468,6 +514,15 @@ export async function processAutomationProject(db, state) {
         const message = error instanceof Error ? error.message : String(error);
         const detail = error?.outcome ? JSON.stringify(error.outcome).slice(0, 60_000) : message;
         await storeLog(db, runId, 'worker:error', detail);
+        await db.query(
+            `UPDATE prompt_requests
+             SET status = CASE WHEN status IN ('cancelled', 'blocked') THEN status ELSE 'failed' END,
+                 completed_at = COALESCE(completed_at, now()), last_error = $2,
+                 context_json = COALESCE(context_json, '{}'::jsonb)
+                    || jsonb_build_object('transportStage', 'failed', 'transportUpdatedAt', now()::text)
+             WHERE id = $1::uuid`,
+            [promptRequest.id, message.slice(0, 4000)]
+        );
         const terminal = attempt >= Number(state.max_work_attempts);
         await db.query(
             `UPDATE project_automation_attempts

@@ -183,6 +183,26 @@ export async function POST(
             case 'automation':
                 result = await controlProjectAutomationRequest(id, String(body.command ?? ''));
                 break;
+            case 'automation-node':
+                result = await internalProjectRequest(
+                    `/projects/${encodeURIComponent(id)}/automation/nodes/${encodeURIComponent(String(body.kind ?? ''))}/${encodeURIComponent(String(body.nodeId ?? ''))}/control`,
+                    {
+                        method: 'POST',
+                        headers: { 'content-type': 'application/json' },
+                        body: JSON.stringify({ action: body.command })
+                    }
+                );
+                break;
+            case 'automation-request':
+                result = await internalProjectRequest(
+                    `/projects/${encodeURIComponent(id)}/automation/requests/${encodeURIComponent(String(body.requestId ?? ''))}/control`,
+                    {
+                        method: 'POST',
+                        headers: { 'content-type': 'application/json' },
+                        body: JSON.stringify({ action: body.command })
+                    }
+                );
+                break;
             case 'browser-monitor-start': {
                 const accountId = String(body.accountId ?? '');
                 const targetUrl = String(body.targetUrl ?? '') || undefined;

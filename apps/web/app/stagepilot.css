@@ -3394,6 +3394,50 @@ select {
 .sp-project-kpis strong { font-size: 15px; }
 .sp-project-kpis span { margin-top: 3px; color: var(--sp-soft); font-size: 9px; }
 
+.sp-ai-request-dock {
+    margin-top: 14px;
+    padding: 10px;
+    border: 1px solid #dfe4f2;
+    border-radius: 18px;
+    background: linear-gradient(135deg, rgba(255,255,255,.98), rgba(246,248,255,.97));
+    box-shadow: 0 12px 32px rgba(30,41,59,.055);
+}
+.sp-ai-request-dock-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 9px; padding: 2px 3px; }
+.sp-ai-request-dock-head > div { display: flex; align-items: center; gap: 9px; }
+.sp-ai-request-dock-head > div > i { display: grid; width: 31px; height: 31px; place-items: center; border-radius: 10px; color: #4f46e5; background: #e9edff; }
+.sp-ai-request-dock-head span { display: grid; gap: 1px; }
+.sp-ai-request-dock-head strong { color: #28344b; font-size: 10px; }
+.sp-ai-request-dock-head small { color: #8993a7; font-size: 8px; }
+.sp-ai-request-dock-head > button { border: 0; border-radius: 9px; padding: 7px 10px; color: #59657a; background: #eef1f7; font-size: 8px; }
+.sp-ai-request-dock-head > button i { margin-left: 5px; }
+.sp-ai-request-strip { display: flex; gap: 8px; padding-bottom: 2px; overflow-x: auto; scrollbar-width: none; }
+.sp-ai-request-strip::-webkit-scrollbar { display: none; }
+.sp-ai-request-card { flex: 0 0 270px; min-width: 0; padding: 10px; border: 1px solid #e2e7f0; border-radius: 13px; background: #fff; }
+.sp-ai-request-card.state-processing,
+.sp-ai-request-card.state-sent,
+.sp-ai-request-card.state-waiting_response { border-color: #cdd4ff; background: linear-gradient(145deg, #fff, #f5f6ff); box-shadow: inset 3px 0 #6366f1; }
+.sp-ai-request-card.state-completed { border-color: #ccebdc; box-shadow: inset 3px 0 #10b981; }
+.sp-ai-request-card.state-failed,
+.sp-ai-request-card.state-blocked,
+.sp-ai-request-card.state-cancelled { border-color: #fecdd3; box-shadow: inset 3px 0 #f43f5e; }
+.sp-ai-request-card > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #7a8598; font-size: 7px; }
+.sp-ai-request-card > header strong { padding: 3px 6px; border-radius: 7px; background: #f0f2f6; font-size: 7px; }
+.sp-ai-request-card > a { display: grid; gap: 3px; margin: 8px 0; color: inherit; text-decoration: none; }
+.sp-ai-request-card > a b { overflow: hidden; color: #263147; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.sp-ai-request-card > a code { overflow: hidden; color: #8a94a8; font-size: 7px; text-overflow: ellipsis; white-space: nowrap; }
+.sp-ai-request-last { display: grid; grid-template-columns: 25px 1fr auto; align-items: center; gap: 7px; padding: 7px; border-radius: 9px; background: #f6f8fb; }
+.sp-ai-request-last > i { color: #6366f1; text-align: center; }
+.sp-ai-request-last span { display: grid; }
+.sp-ai-request-last small { color: #9aa3b4; font-size: 7px; }
+.sp-ai-request-last strong { color: #47536a; font-size: 8px; }
+.sp-ai-request-last time { color: #9aa3b4; font-size: 7px; }
+.sp-ai-request-actions { display: flex; justify-content: flex-end; gap: 5px; margin-top: 8px; }
+.sp-ai-request-actions button { min-height: 28px; padding: 0 8px; border: 0; border-radius: 8px; color: #596579; background: #edf0f5; font-size: 8px; }
+.sp-ai-request-actions button.play { color: #fff; background: linear-gradient(135deg, #4f46e5, #8b5cf6); }
+.sp-ai-request-actions button.delete { width: 29px; padding: 0; color: #be123c; background: #fff1f2; }
+.sp-ai-request-actions button:disabled { opacity: .38; cursor: not-allowed; }
+.sp-ai-request-empty { width: 100%; margin: 0; padding: 12px; color: #8a94a8; text-align: center; font-size: 9px; }
+
 .sp-control-tabs {
     display: flex;
     align-items: center;
@@ -3486,14 +3530,24 @@ select {
 .sp-chat-panel { display: flex; flex-direction: column; min-height: 650px; overflow: hidden; }
 .sp-tree-heading { justify-content: space-between; padding: 16px; border-bottom: 1px solid var(--sp-line); }
 .sp-tree-heading h3 { margin: 2px 0 0; font-size: 14px; }
-.sp-tree-heading > button,
+.sp-tree-heading-actions button,
 .sp-modal-title > button { width: 34px; height: 34px; border: 0; border-radius: 10px; color: #4f46e5; background: #eef2ff; }
+.sp-tree-heading-actions { display: flex; gap: 6px; }
 .sp-tree-scroll { flex: 1; max-height: 720px; padding: 10px; overflow: auto; }
+.sp-tree-fullscreen { position: fixed; z-index: 1100; inset: 12px; min-height: 0; border-color: #cbd3ff; box-shadow: 0 28px 90px rgba(15,23,42,.28); }
+.sp-tree-fullscreen .sp-tree-scroll { max-height: none; }
+.sp-tree-fullscreen .sp-stage-node { margin-bottom: 12px; }
+.sp-tree-fullscreen .sp-node-main strong { font-size: 14px; }
+.sp-tree-fullscreen .sp-node-main small { font-size: 10px; }
 .sp-stage-node { position: relative; margin-bottom: 8px; border: 1px solid #e5e9f2; border-radius: 13px; background: #fbfcff; }
 .sp-node-row { min-height: 49px; padding: 5px 6px; }
 .sp-work-list { padding: 0 14px 8px 7px; }
 .sp-work-node { min-height: 43px; margin-top: 5px; padding: 4px 5px; border-right: 2px solid #dbe3f4; border-radius: 9px; background: #fff; }
 .sp-grip { width: 18px; color: #b3bdd0; cursor: grab; font-size: 10px; }
+.sp-node-play { display: grid; flex: 0 0 31px; width: 31px; height: 31px; place-items: center; border: 0; border-radius: 10px; color: #fff; background: linear-gradient(135deg, #4f46e5, #8b5cf6); box-shadow: 0 6px 15px rgba(79,70,229,.25); font-size: 9px; }
+.sp-node-play.sp-work-play { flex-basis: 27px; width: 27px; height: 27px; border-radius: 9px; background: linear-gradient(135deg, #0ea5e9, #6366f1); }
+.sp-node-play.pause { background: linear-gradient(135deg, #f59e0b, #f97316); box-shadow: 0 6px 15px rgba(245,158,11,.24); }
+.sp-node-play:disabled { color: #94a3b8; background: #e7ebf1; box-shadow: none; cursor: not-allowed; }
 .sp-node-main { display: grid; flex: 1; min-width: 0; grid-template-columns: 1fr auto; gap: 0 6px; border: 0; background: none; text-align: right; }
 .sp-node-main small { grid-column: 1; color: #8b95a9; font-size: 8px; direction: ltr; text-align: right; }
 .sp-node-main strong { grid-column: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #263147; font-size: 10px; }

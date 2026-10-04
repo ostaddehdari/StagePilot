@@ -93,6 +93,8 @@ import {
 
 import {
     controlProjectAutomation,
+    controlProjectAutomationNode,
+    controlProjectPromptRequest,
     getProjectAutomation
 } from './automation';
 
@@ -1226,6 +1228,49 @@ export class AppController {
         } catch (error) {
             throw new BadRequestException(
                 error instanceof Error ? error.message : 'AUTOMATION_CONTROL_FAILED'
+            );
+        }
+    }
+
+
+    @Post('projects/:id/automation/nodes/:kind/:nodeId/control')
+    async controlAutomationNode(
+        @Param('id') id: string,
+        @Param('kind') kind: string,
+        @Param('nodeId') nodeId: string,
+        @Body() body: { action?: unknown },
+        @Headers('x-stagepilot-internal-key') internalKey?: string
+    ) {
+        this.authorizeInternal(internalKey);
+        try {
+            return {
+                ok: true,
+                result: await controlProjectAutomationNode(id, kind, nodeId, body?.action)
+            };
+        } catch (error) {
+            throw new BadRequestException(
+                error instanceof Error ? error.message : 'AUTOMATION_NODE_CONTROL_FAILED'
+            );
+        }
+    }
+
+
+    @Post('projects/:id/automation/requests/:requestId/control')
+    async controlAutomationRequest(
+        @Param('id') id: string,
+        @Param('requestId') requestId: string,
+        @Body() body: { action?: unknown },
+        @Headers('x-stagepilot-internal-key') internalKey?: string
+    ) {
+        this.authorizeInternal(internalKey);
+        try {
+            return {
+                ok: true,
+                result: await controlProjectPromptRequest(id, requestId, body?.action)
+            };
+        } catch (error) {
+            throw new BadRequestException(
+                error instanceof Error ? error.message : 'AUTOMATION_REQUEST_CONTROL_FAILED'
             );
         }
     }

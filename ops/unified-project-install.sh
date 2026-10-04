@@ -84,6 +84,7 @@ npm run build
 npm run manager:plan-test --workspace @stagepilot/worker
 npm run manager:proposal-test --workspace @stagepilot/worker
 npm run automation:selftest --workspace @stagepilot/worker
+npm run automation:work-control-test --workspace @stagepilot/worker
 npm run browser:composer-test --workspace @stagepilot/worker
 npm run browser:runtime-guard-test --workspace @stagepilot/worker
 npm run browser:frame-recovery-test --workspace @stagepilot/worker
@@ -92,6 +93,7 @@ node --check apps/worker/browser/chatgpt-adapter.mjs
 node --check apps/worker/src/browser-transport.mjs
 node --check apps/worker/src/planning-processor.mjs
 node --check apps/worker/src/repository-provisioner.mjs
+node --check apps/worker/src/work-processor.mjs
 
 rg -q "api/projects/\[id\]/control" < <(find apps/web/app/api/projects -type f -print) \
     || test -f apps/web/app/api/projects/'[id]'/control/route.ts \
@@ -148,6 +150,16 @@ rg -q 'send_uncertain_recovery' apps/worker/src/browser-transport.mjs \
     || fail 'uncertain send response-only recovery missing'
 rg -q 'DISTINCT ON \(failed.project_id\)' database/migrations/019_send_uncertain_recovery.sql \
     || fail 'single recovery request per project guard missing'
+rg -q 'sp-ai-request-dock' apps/web/components/project-control-center.tsx \
+    || fail 'project AI request command bar missing'
+rg -q 'sp-tree-fullscreen' apps/web/components/project-control-center.tsx \
+    || fail 'fullscreen PLAN TREE control missing'
+rg -q 'controlProjectAutomationNode' apps/api/src/automation.ts \
+    || fail 'Stage and Work controls missing'
+rg -q 'recordWorkTransportProgress' apps/worker/src/work-processor.mjs \
+    || fail 'work request transport observability missing'
+rg -q 'DEPLOYMENT_INTERRUPTED_WORK_REQUEST_REVIEW_REQUIRED' database/migrations/022_work_request_control.sql \
+    || fail 'interrupted work request safety migration missing'
 rg -Uq 'current_plan_revision\s*=\s*CASE\s+WHEN \$4::boolean THEN \$2::integer' apps/worker/src/planning-processor.mjs \
     || fail 'materialized PLAN TREE current revision update missing'
 rg -q "import\('quill'\)" apps/web/components/project-control-center.tsx \
@@ -184,6 +196,7 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/018_chatgpt_frame
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/019_send_uncertain_recovery.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/020_plan_tree_visibility.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/021_visible_browser_handoff.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/022_work_request_control.sql
 
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c \
     "SELECT count(*) AS preserved_nonterminal_requests
@@ -241,6 +254,9 @@ BEGIN
     END IF;
     IF NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version = '021_visible_browser_handoff') THEN
         RAISE EXCEPTION 'migration 021_visible_browser_handoff missing';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version = '022_work_request_control') THEN
+        RAISE EXCEPTION 'migration 022_work_request_control missing';
     END IF;
     IF EXISTS (
         SELECT 1
@@ -304,6 +320,11 @@ printf '%s\n' 'SEND_UNCERTAIN response-only recovery: PASS'
 printf '%s\n' 'Quill visual, HTML source and preview editor: PASS'
 printf '%s\n' 'OpenSearch disabled; PostgreSQL search retained: PASS'
 printf '%s\n' 'Materialized PLAN TREE visibility: PASS'
+printf '%s\n' 'Fullscreen PLAN TREE workspace: PASS'
+printf '%s\n' 'Stage and Work gradient controls: PASS'
+printf '%s\n' 'Project AI request command bar: PASS'
+printf '%s\n' 'Latest-only ChatGPT status: PASS'
+printf '%s\n' 'Interrupted work duplicate protection: PASS'
 printf '%s\n' 'Per-project GitHub credentials: PASS'
 printf '%s\n' 'STAGEPILOT_UNIFIED_PROJECT=PASS'
 printf 'Finished: %s\n' "$(date -u +%FT%TZ)"

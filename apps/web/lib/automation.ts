@@ -32,6 +32,26 @@ export type ProjectAutomation = {
         last_error: string | null;
         heartbeat_at: string;
     };
+    requests: Array<{
+        id: string;
+        request_key: string;
+        request_type: string;
+        status: string;
+        context_json: Record<string, unknown>;
+        last_error: string | null;
+        sent_at: string | null;
+        completed_at: string | null;
+        created_at: string;
+        stage_id: string | null;
+        stage_key: string | null;
+        stage_title: string | null;
+        work_id: string | null;
+        work_key: string | null;
+        work_title: string | null;
+        attempt_id: string | null;
+        attempt: number | null;
+        attempt_status: string | null;
+    }>;
 };
 
 function apiBase() {

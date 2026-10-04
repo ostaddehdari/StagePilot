@@ -43,6 +43,7 @@ const TRANSPORT_LABELS: Record<string, string> = {
     context_loading: 'بررسی حساب و لینک',
     context_ready: 'حساب و مقصد آماده',
     browser_starting: 'راه‌اندازی مرورگر',
+    visible_handoff_completed: 'تحویل noVNC به اجرای خودکار',
     browser_ready: 'مرورگر آماده',
     target_opening: 'بازکردن لینک ChatGPT',
     target_opened: 'لینک باز شد',
@@ -58,8 +59,35 @@ const TRANSPORT_LABELS: Record<string, string> = {
     response_waiting: 'انتظار پاسخ ChatGPT',
     response_recovery: 'بازیابی پاسخ بدون ارسال مجدد',
     response_received: 'پاسخ دریافت شد',
+    safe_stop_requested: 'توقف ایمن ثبت شد',
+    created: 'در صف Worker',
+    retry: 'آماده تلاش مجدد',
+    processing: 'در حال پردازش',
+    sent: 'ارسال‌شده',
+    waiting_response: 'انتظار پاسخ ChatGPT',
+    blocked: 'متوقف',
+    cancelled: 'لغوشده',
     completed: 'نتیجه ثبت و نمایش شد',
     failed: 'چرخه با خطا متوقف شد'
+};
+
+const REQUEST_TYPE_LABELS: Record<string, string> = {
+    work_execution: 'اجرای Work',
+    project_proposal: 'ساخت پروپوزال',
+    project_plan_tree: 'ساخت PLAN TREE',
+    project_plan: 'ارزیابی پروژه'
+};
+
+const REQUEST_STATUS_LABELS: Record<string, string> = {
+    created: 'در صف',
+    retry: 'آماده تلاش مجدد',
+    processing: 'در حال پردازش',
+    sent: 'ارسال‌شده',
+    waiting_response: 'انتظار پاسخ',
+    completed: 'تکمیل‌شده',
+    failed: 'ناموفق',
+    blocked: 'متوقف',
+    cancelled: 'لغوشده'
 };
 
 
@@ -119,7 +147,10 @@ function errorLabel(error: string) {
         'CHATGPT_INTERVENTION_REQUIRED:challenge': 'Cloudflare مانع دسترسی شده است؛ در تنظیمات پروژه noVNC را باز کنید و بررسی انسانی را کامل کنید.',
         'CHATGPT_INTERVENTION_REQUIRED:needs_login': 'حساب ChatGPT نیاز به ورود دارد؛ در تنظیمات پروژه noVNC را باز کنید و وارد حساب شوید.',
         DRAFT_TRIGGERED_UNEXPECTED_SEND: 'هنگام درج متن یک ارسال ناخواسته تشخیص داده شد؛ چرخه فوراً متوقف شد و تکرار خودکار انجام نمی‌شود.',
-        INCOMPLETE_NODE_ORDER: 'فهرست جابه‌جایی کامل نیست؛ صفحه تازه‌سازی شد.'
+        INCOMPLETE_NODE_ORDER: 'فهرست جابه‌جایی کامل نیست؛ صفحه تازه‌سازی شد.',
+        ACTIVE_REQUEST_CANNOT_BE_DELETED: 'درخواست فعال را نمی‌توان حذف کرد؛ ابتدا توقف ایمن را بزنید.',
+        COMPLETED_NODE_CANNOT_BE_RESTARTED: 'Stage یا Work تکمیل‌شده دوباره اجرا نمی‌شود.',
+        ONLY_WORK_REQUESTS_ARE_CONTROLLABLE: 'کنترل توقف و ادامه برای درخواست‌های اجرای Work فعال است.'
     };
     return labels[error] ?? error.replaceAll('_', ' ');
 }
@@ -140,15 +171,25 @@ export function ProjectControlCenter({
     const [dragging, setDragging] = useState<{ kind: 'stage' | 'work'; id: string; parentId?: string } | null>(null);
     const [inspectors, setInspectors] = useState<InspectorTab[]>([]);
     const [activeInspector, setActiveInspector] = useState('chat');
+    const [treeFullscreen, setTreeFullscreen] = useState(false);
+    const [showAllRequests, setShowAllRequests] = useState(false);
     const latestPlan = data.planning.plans[0] ?? null;
     const officialProposal = data.planning.officialProposal;
     const latestRequest = data.planning.promptRequests[0] ?? null;
     const transportHistory = Array.isArray(latestRequest?.context_json?.transportHistory)
         ? latestRequest.context_json.transportHistory as Array<Record<string, unknown>>
         : [];
+    const lastTransport = transportHistory.length > 0
+        ? transportHistory[transportHistory.length - 1]
+        : null;
     const requestActive = latestRequest
         ? ['created', 'retry', 'processing', 'sent', 'waiting_response'].includes(latestRequest.status)
         : false;
+    const allAiRequests = data.automation.requests ?? [];
+    const visibleAiRequests = showAllRequests ? allAiRequests : allAiRequests.slice(0, 8);
+    const anyAiRequestActive = allAiRequests.some(item =>
+        ['created', 'retry', 'processing', 'sent', 'waiting_response'].includes(item.status)
+    );
     const defaultHtml = useMemo(
         () => officialProposal?.proposalHtml ?? '',
         [officialProposal]
@@ -199,13 +240,27 @@ export function ProjectControlCenter({
     useEffect(() => {
         const timer = window.setInterval(() => {
             if (!busy && !treeEditor) void refresh(true);
-        }, requestActive ? 3000 : 15000);
+        }, requestActive || anyAiRequestActive ? 3000 : 15000);
         return () => window.clearInterval(timer);
-    }, [busy, treeEditor, requestActive]);
+    }, [busy, treeEditor, requestActive, anyAiRequestActive]);
 
     useEffect(() => {
         setProposalSource(defaultHtml);
     }, [defaultHtml]);
+
+    useEffect(() => {
+        if (!treeFullscreen) return;
+        const previousOverflow = document.body.style.overflow;
+        const closeOnEscape = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') setTreeFullscreen(false);
+        };
+        document.body.style.overflow = 'hidden';
+        window.addEventListener('keydown', closeOnEscape);
+        return () => {
+            document.body.style.overflow = previousOverflow;
+            window.removeEventListener('keydown', closeOnEscape);
+        };
+    }, [treeFullscreen]);
 
     useEffect(() => {
         let cancelled = false;
@@ -379,6 +434,41 @@ export function ProjectControlCenter({
                 </div>
             </header>
 
+            <section className="sp-ai-request-dock" aria-label="فهرست درخواست‌های هوش مصنوعی">
+                <div className="sp-ai-request-dock-head">
+                    <div><i className="fa-solid fa-satellite-dish" /><span><strong>درخواست‌های ChatGPT</strong><small>{faNumber(allAiRequests.length)} رکورد اخیر این پروژه</small></span></div>
+                    {allAiRequests.length > 8 && <button type="button" onClick={() => setShowAllRequests(value => !value)}><i className={`fa-solid ${showAllRequests ? 'fa-chevron-up' : 'fa-chevron-down'}`} />{showAllRequests ? 'نمایش کمتر' : 'نمایش همه'}</button>}
+                </div>
+                <div className="sp-ai-request-strip">
+                    {visibleAiRequests.length === 0 && <p className="sp-ai-request-empty">هنوز درخواستی برای هوش مصنوعی ثبت نشده است.</p>}
+                    {visibleAiRequests.map(request => {
+                        const history = Array.isArray(request.context_json?.transportHistory)
+                            ? request.context_json.transportHistory as Array<Record<string, unknown>>
+                            : [];
+                        const latest = history.length > 0 ? history[history.length - 1] : null;
+                        const stage = safeText(request.context_json?.transportStage || latest?.stage || request.status);
+                        const stageAt = request.context_json?.transportUpdatedAt || latest?.at || request.created_at;
+                        const active = ['created', 'retry', 'processing', 'sent', 'waiting_response'].includes(request.status);
+                        const isWork = request.request_type === 'work_execution' && Boolean(request.work_id);
+                        const title = request.work_title
+                            ? `${request.work_key ?? ''} · ${request.work_title}`
+                            : request.stage_title
+                                ? `${request.stage_key ?? ''} · ${request.stage_title}`
+                                : REQUEST_TYPE_LABELS[request.request_type] ?? request.request_type;
+                        return <article key={request.id} className={`sp-ai-request-card state-${request.status}`}>
+                            <header><span>{REQUEST_TYPE_LABELS[request.request_type] ?? request.request_type}</span><strong className={`state-${request.status}`}>{REQUEST_STATUS_LABELS[request.status] ?? request.status}</strong></header>
+                            <Link href={`/archive/prompts/${request.id}`} title="مشاهده جزئیات درخواست"><b>{title}</b><code dir="ltr">{request.request_key}</code></Link>
+                            <div className="sp-ai-request-last"><i className={`fa-solid ${active ? 'fa-spinner fa-spin' : request.status === 'completed' ? 'fa-circle-check' : 'fa-circle-exclamation'}`} /><span><small>آخرین مرحله</small><strong>{TRANSPORT_LABELS[stage] ?? stage}</strong></span><time>{faDate(stageAt)}</time></div>
+                            <div className="sp-ai-request-actions">
+                                {isWork && active && <button type="button" title="توقف ایمن Work" disabled={Boolean(busy)} onClick={() => void command('automation-request', { requestId: request.id, command: 'pause' }, 'توقف ایمن Work ثبت شد.')}><i className="fa-solid fa-pause" /> توقف</button>}
+                                {isWork && !active && request.status !== 'completed' && <button type="button" className="play" title="ادامه این Work" disabled={Boolean(busy)} onClick={() => void command('automation-request', { requestId: request.id, command: 'resume' }, 'Work برای ادامه در صف قرار گرفت.')}><i className="fa-solid fa-play" /> ادامه</button>}
+                                <button type="button" className="delete" title={active ? 'ابتدا Work را متوقف کنید' : 'حذف درخواست از فهرست'} disabled={Boolean(busy) || active} onClick={() => { if (window.confirm('این درخواست از فهرست پروژه حذف شود؟')) void command('automation-request', { requestId: request.id, command: 'delete' }, 'درخواست از فهرست حذف شد.'); }}><i className="fa-solid fa-trash-can" /></button>
+                            </div>
+                        </article>;
+                    })}
+                </div>
+            </section>
+
             <nav className="sp-control-tabs" aria-label="بخش‌های پروژه">
                 {Object.entries(TAB_NAMES).map(([key, label]) => (
                     <button key={key} type="button" className={tab === key ? 'active' : ''} onClick={() => selectTab(key)}>
@@ -437,15 +527,17 @@ export function ProjectControlCenter({
 
             {tab === 'workspace' && (
                 <section className="sp-tab-page sp-workspace-layout">
-                    <aside className="sp-tree-panel sp-card">
-                        <div className="sp-tree-heading"><div><span>PLAN TREE</span><h3>Stage و Work</h3></div><button type="button" onClick={() => setTreeEditor({ mode: 'create', kind: 'stage', position: data.workspace.stages.length })} title="Stage جدید"><i className="fa-solid fa-plus" /></button></div>
+                    <aside className={`sp-tree-panel sp-card ${treeFullscreen ? 'sp-tree-fullscreen' : ''}`}>
+                        <div className="sp-tree-heading"><div><span>PLAN TREE</span><h3>Stage و Work</h3></div><div className="sp-tree-heading-actions"><button type="button" onClick={() => setTreeFullscreen(value => !value)} title={treeFullscreen ? 'خروج از حالت تمام‌صفحه' : 'نمایش تمام‌صفحه'}><i className={`fa-solid ${treeFullscreen ? 'fa-compress' : 'fa-expand'}`} /></button><button type="button" onClick={() => setTreeEditor({ mode: 'create', kind: 'stage', position: data.workspace.stages.length })} title="Stage جدید"><i className="fa-solid fa-plus" /></button></div></div>
                         <div className="sp-tree-scroll">
                             {data.workspace.stages.length === 0 && <div className="sp-empty-small"><i className="fa-solid fa-diagram-project" /><p>پس از تأیید پروپوزال، درخت ساخته می‌شود؛ یا Stage را دستی اضافه کنید.</p></div>}
                             {data.workspace.stages.map((stage, stageIndex) => {
                                 const stageLocked = Boolean(stage.started_at) || !['pending', 'ready', 'draft'].includes(stage.status);
+                                const stageRunning = stage.status === 'running';
                                 return <div key={stage.id} className="sp-stage-node" draggable={!stageLocked} onDragStart={() => setDragging({ kind: 'stage', id: stage.id })} onDragOver={event => event.preventDefault()} onDrop={() => void dropStage(stage.id)}>
                                     <div className="sp-node-row">
                                         <i className="fa-solid fa-grip-vertical sp-grip" />
+                                        <button type="button" className={`sp-node-play ${stageRunning ? 'pause' : ''}`} disabled={Boolean(busy) || stage.status === 'completed'} title={stageRunning ? 'توقف ایمن Stage' : 'شروع از این Stage'} onClick={() => void command('automation-node', { kind: 'stage', nodeId: stage.id, command: stageRunning ? 'pause' : stage.status === 'paused' ? 'resume' : 'play' }, stageRunning ? 'توقف ایمن Stage ثبت شد.' : 'Stage در صف اجرا قرار گرفت.')}><i className={`fa-solid ${stageRunning ? 'fa-pause' : stage.status === 'completed' ? 'fa-check' : 'fa-play'}`} /></button>
                                         <button type="button" className="sp-node-main" onClick={() => setTreeEditor({ mode: 'edit', kind: 'stage', nodeId: stage.id, title: stage.title, description: stage.description })}><small>{stage.stage_key}</small><strong>{stage.title}</strong><span className={`state-${stage.status}`}>{stage.status}</span></button>
                                         <div className="sp-node-tools">
                                             <button type="button" title="دستورها و نتیجه" onClick={() => void inspectNode('stage', stage.id, stage.title)}><i className="fa-solid fa-eye" /></button>
@@ -456,8 +548,10 @@ export function ProjectControlCenter({
                                     <div className="sp-work-list">
                                         {stage.works.map((work, workIndex) => {
                                             const locked = Boolean(work.started_at) || !['pending', 'ready', 'draft'].includes(work.status);
+                                            const workRunning = work.status === 'running';
                                             return <div key={work.id} className="sp-work-node" draggable={!locked} onDragStart={event => { event.stopPropagation(); setDragging({ kind: 'work', id: work.id, parentId: stage.id }); }} onDragOver={event => event.preventDefault()} onDrop={event => { event.stopPropagation(); void dropWork(stage.id, work.id); }}>
                                                 <i className="fa-solid fa-grip-lines sp-grip" />
+                                                <button type="button" className={`sp-node-play sp-work-play ${workRunning ? 'pause' : ''}`} disabled={Boolean(busy) || work.status === 'completed'} title={workRunning ? 'توقف ایمن Work' : 'اجرای این Work'} onClick={() => void command('automation-node', { kind: 'work', nodeId: work.id, command: workRunning ? 'pause' : work.status === 'paused' ? 'resume' : 'play' }, workRunning ? 'توقف ایمن Work ثبت شد.' : `${work.work_key} · ${work.title} در صف اجرا قرار گرفت.`)}><i className={`fa-solid ${workRunning ? 'fa-pause' : work.status === 'completed' ? 'fa-check' : 'fa-play'}`} /></button>
                                                 <button type="button" className="sp-node-main" onClick={() => setTreeEditor({ mode: 'edit', kind: 'work', nodeId: work.id, parentId: stage.id, title: work.title, description: work.description })}><small>{work.work_key}</small><strong>{work.title}</strong><span className={`state-${work.status}`}>{work.status}</span></button>
                                                 <div className="sp-node-tools"><button type="button" title="دستورها و نتیجه" onClick={() => void inspectNode('work', work.id, work.title)}><i className="fa-solid fa-eye" /></button><button type="button" title="افزودن Work بعد از این نود" onClick={() => setTreeEditor({ mode: 'create', kind: 'work', parentId: stage.id, position: workIndex + 1 })}><i className="fa-solid fa-plus" /></button><button type="button" title={locked ? 'Work اجرا شده و قابل حذف نیست' : 'حذف Work'} disabled={locked} onClick={() => void command('tree-delete', { kind: 'work', nodeId: work.id }, 'Work حذف شد.')}><i className="fa-solid fa-xmark" /></button></div>
                                             </div>;
@@ -479,9 +573,9 @@ export function ProjectControlCenter({
                             {latestRequest && <div className={`sp-ai-progress state-${latestRequest.status}`}>
                                 <div className="sp-ai-progress-head"><span><i className={requestActive ? 'fa-solid fa-spinner fa-spin' : latestRequest.status === 'completed' ? 'fa-solid fa-circle-check' : 'fa-solid fa-triangle-exclamation'} /><strong>{latestRequest.status === 'completed' ? 'چرخه ChatGPT تکمیل شد' : latestRequest.status === 'failed' ? 'چرخه ChatGPT ناموفق بود' : 'چرخه ChatGPT در حال اجراست'}</strong></span><small>{faDate(latestRequest.created_at)}</small></div>
                                 <div className="sp-ai-timeline">
-                                    {transportHistory.length === 0
+                                    {!lastTransport
                                         ? <span className="active"><i className="fa-solid fa-clock" />در صف Worker</span>
-                                        : transportHistory.map((item, index) => <span key={`${safeText(item.stage)}-${index}`} className={index === transportHistory.length - 1 ? 'active' : 'done'} title={safeText(item.at)}><i className={`fa-solid ${safeText(item.stage) === 'failed' ? 'fa-circle-xmark' : index === transportHistory.length - 1 && requestActive ? 'fa-spinner fa-spin' : 'fa-circle-check'}`} />{TRANSPORT_LABELS[safeText(item.stage)] ?? safeText(item.stage)}</span>)}
+                                        : <span className="active" title={safeText(lastTransport.at)}><i className={`fa-solid ${safeText(lastTransport.stage) === 'failed' ? 'fa-circle-xmark' : requestActive ? 'fa-spinner fa-spin' : 'fa-circle-check'}`} /><small>آخرین مرحله:</small>{TRANSPORT_LABELS[safeText(lastTransport.stage)] ?? safeText(lastTransport.stage)}</span>}
                                 </div>
                                 {latestRequest.last_error && <div className="sp-ai-error"><i className="fa-solid fa-bug" /><span><strong>علت توقف</strong>{errorLabel(latestRequest.last_error)}<code dir="ltr">{latestRequest.last_error}</code></span></div>}
                             </div>}

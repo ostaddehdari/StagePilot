@@ -72,7 +72,8 @@ async function recoverStaleClaims() {
                          'target_opening', 'target_opened',
                          'project_creating', 'project_created',
                          'new_chat_opening', 'new_chat_opened',
-                         'composer_drafting', 'composer_ready'
+                         'composer_drafting', 'composer_ready',
+                         'send_confirmed', 'response_recovery', 'response_waiting'
                      )
                     THEN 'retry'
                     ELSE 'failed'
@@ -86,7 +87,8 @@ async function recoverStaleClaims() {
                          'target_opening', 'target_opened',
                          'project_creating', 'project_created',
                          'new_chat_opening', 'new_chat_opened',
-                         'composer_drafting', 'composer_ready'
+                         'composer_drafting', 'composer_ready',
+                         'send_confirmed', 'response_recovery', 'response_waiting'
                      )
                     THEN NULL
                     ELSE now()
@@ -100,7 +102,8 @@ async function recoverStaleClaims() {
                          'target_opening', 'target_opened',
                          'project_creating', 'project_created',
                          'new_chat_opening', 'new_chat_opened',
-                         'composer_drafting', 'composer_ready'
+                         'composer_drafting', 'composer_ready',
+                         'send_confirmed', 'response_recovery', 'response_waiting'
                      )
                     THEN now()
                     ELSE NULL
@@ -116,9 +119,10 @@ async function recoverStaleClaims() {
                          'target_opening', 'target_opened',
                          'project_creating', 'project_created',
                          'new_chat_opening', 'new_chat_opened',
-                         'composer_drafting', 'composer_ready'
+                         'composer_drafting', 'composer_ready',
+                         'send_confirmed', 'response_recovery', 'response_waiting'
                      )
-                    THEN 'WORKER_INTERRUPTED_BEFORE_SEND_SAFE_RETRY'
+                    THEN 'WORKER_INTERRUPTED_SAFE_EXACTLY_ONCE_RECOVERY'
                     ELSE 'WORKER_INTERRUPTED_AFTER_POSSIBLE_SEND_MANUAL_REVIEW_REQUIRED'
                 END,
                 context_json = COALESCE(context_json, '{}'::jsonb) || jsonb_build_object(
@@ -131,7 +135,8 @@ async function recoverStaleClaims() {
                              'target_opening', 'target_opened',
                              'project_creating', 'project_created',
                              'new_chat_opening', 'new_chat_opened',
-                             'composer_drafting', 'composer_ready'
+                             'composer_drafting', 'composer_ready',
+                             'send_confirmed', 'response_recovery', 'response_waiting'
                          )
                         THEN 'retry'
                         ELSE 'failed'
@@ -146,7 +151,8 @@ async function recoverStaleClaims() {
                              'target_opening', 'target_opened',
                              'project_creating', 'project_created',
                              'new_chat_opening', 'new_chat_opened',
-                             'composer_drafting', 'composer_ready'
+                             'composer_drafting', 'composer_ready',
+                             'send_confirmed', 'response_recovery', 'response_waiting'
                          )
                         THEN true
                         ELSE false
@@ -166,7 +172,7 @@ async function recoverStaleClaims() {
          SELECT project_id, 'prompt_request', id::text,
                 'planning.request.recovered', 'warning', 'worker', $1,
                 CASE WHEN status = 'retry'
-                    THEN 'چرخه ChatGPT پیش از مرحله ارسال متوقف شده بود و با ایمنی بازیابی شد.'
+                    THEN 'چرخه ChatGPT با حفظ ارسال دقیقاً یک‌بار، به‌صورت ایمن بازیابی شد.'
                     ELSE 'به‌علت احتمال ارسال قبلی، تکرار خودکار ممنوع و چرخه برای بررسی دستی متوقف شد.'
                 END,
                 jsonb_build_object('status', status, 'sendAttempts', send_attempts)

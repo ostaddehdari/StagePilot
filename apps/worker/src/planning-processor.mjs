@@ -1,7 +1,10 @@
 import { randomUUID } from 'node:crypto';
 
 import { parseManagerResponse } from '../manager/response-parser.mjs';
-import { sendPromptAndWait } from './browser-transport.mjs';
+import {
+    recoverPreviouslySentPrompt,
+    sendPromptAndWait
+} from './browser-transport.mjs';
 
 const TRANSPORT_MESSAGES = {
     worker_claimed: 'Worker درخواست برنامه‌ریزی را دریافت کرد.',
@@ -20,6 +23,7 @@ const TRANSPORT_MESSAGES = {
     send_clicking: 'دکمه ارسال ChatGPT در حال کلیک است.',
     send_confirmed: 'ارسال پیام به ChatGPT تأیید شد.',
     response_waiting: 'در انتظار تکمیل پاسخ ChatGPT هستیم.',
+    response_recovery: 'پاسخ ارسال‌شده بدون ارسال دوباره در حال بازیابی است.',
     response_received: 'پاسخ کامل ChatGPT دریافت شد.',
     completed: 'پاسخ اعتبارسنجی و در پروژه نمایش داده شد.',
     failed: 'چرخه ChatGPT با خطا متوقف شد.'
@@ -491,21 +495,43 @@ export async function processPlanningRequest(db, request) {
             targetType: row.external_url ? 'existing' : 'new',
             targetUrl: row.external_url ?? null
         });
-        const response = await sendPromptAndWait({
+        const operationId = `${row.request_type}:${row.id}`;
+        const history = Array.isArray(row.context_json?.transportHistory)
+            ? row.context_json.transportHistory
+            : [];
+        const confirmedSend = [...history]
+            .reverse()
+            .find(item => item?.stage === 'send_confirmed');
+        const alreadySent = Boolean(row.sent_at || confirmedSend);
+        const recoveryConversationUrl = row.external_url
+            ?? confirmedSend?.conversationUrl
+            ?? null;
+        const recoveryConversationId = confirmedSend?.conversationId
+            ?? null;
+        const shared = {
             profileKey: row.profile_key,
             accountId: row.account_id,
-            conversationUrl: row.external_url,
-            createProjectName:
-                !row.external_url
-                && row.started_reason === 'new_chatgpt_project_requested'
-                && row.settings?.chatTargetType === 'project'
-                    ? row.project_name
-                    : null,
-            operationId: `${row.request_type}:${row.id}`,
+            operationId,
             promptText: row.prompt_text,
             timeoutMs: Number(process.env.STAGEPILOT_AI_RESPONSE_TIMEOUT_MS ?? 240_000),
             onProgress: progress => recordTransportProgress(db, row, progress)
-        });
+        };
+        const response = alreadySent
+            ? await recoverPreviouslySentPrompt({
+                ...shared,
+                conversationUrl: recoveryConversationUrl,
+                provisionalConversationId: recoveryConversationId
+            })
+            : await sendPromptAndWait({
+                ...shared,
+                conversationUrl: row.external_url,
+                createProjectName:
+                    !row.external_url
+                    && row.started_reason === 'new_chatgpt_project_requested'
+                    && row.settings?.chatTargetType === 'project'
+                        ? row.project_name
+                        : null
+            });
         const persisted = row.request_type === 'project_proposal'
             ? await persistProposalResponse(db, row, response)
             : await persistPlanResponse(db, row, response);

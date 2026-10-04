@@ -53,6 +53,7 @@ const TRANSPORT_LABELS: Record<string, string> = {
     send_clicking: 'کلیک دکمه ارسال',
     send_confirmed: 'ارسال تأیید شد',
     response_waiting: 'انتظار پاسخ ChatGPT',
+    response_recovery: 'بازیابی پاسخ بدون ارسال مجدد',
     response_received: 'پاسخ دریافت شد',
     completed: 'نتیجه ثبت و نمایش شد',
     failed: 'چرخه با خطا متوقف شد'

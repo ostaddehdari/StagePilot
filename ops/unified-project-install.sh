@@ -82,6 +82,7 @@ npm run manager:proposal-test --workspace @stagepilot/worker
 npm run automation:selftest --workspace @stagepilot/worker
 npm run browser:composer-test --workspace @stagepilot/worker
 npm run browser:runtime-guard-test --workspace @stagepilot/worker
+npm run browser:frame-recovery-test --workspace @stagepilot/worker
 node --check apps/worker/browser/chatgpt-adapter.mjs
 node --check apps/worker/src/browser-transport.mjs
 node --check apps/worker/src/planning-processor.mjs
@@ -127,6 +128,10 @@ rg -q 'Stage Exit Verification' apps/api/src/planning.ts \
     || fail 'mandatory Stage completion test rule missing'
 rg -q 'GitHub repository/branch' apps/api/src/planning.ts \
     || fail 'GitHub synchronization planning rule missing'
+rg -q 'recoverPreviouslySentPrompt' apps/worker/src/planning-processor.mjs \
+    || fail 'post-send response-only recovery missing'
+rg -q 'FRAME_REACQUIRING' apps/worker/browser/chatgpt-response-monitor.mjs \
+    || fail 'detached Frame recovery missing'
 if rg -U 'keyboard\s*\.\s*type\s*\(\s*text\b' apps/worker/browser/chatgpt-adapter.mjs; then
     fail 'unsafe multiline keyboard typing is present'
 fi
@@ -155,6 +160,7 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/014_project_creat
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/015_unified_project_workspace.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/016_chatgpt_exactly_once.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/017_proposal_plan_tree_workflow.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/migrations/018_chatgpt_frame_recovery.sql
 
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c \
     "SELECT count(*) AS preserved_nonterminal_requests
@@ -201,6 +207,9 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version = '017_proposal_plan_tree_workflow') THEN
         RAISE EXCEPTION 'migration 017_proposal_plan_tree_workflow missing';
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version = '018_chatgpt_frame_recovery') THEN
+        RAISE EXCEPTION 'migration 018_chatgpt_frame_recovery missing';
+    END IF;
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE table_name = 'project_plan_versions' AND column_name = 'proposal_html'
@@ -245,6 +254,8 @@ printf '%s\n' 'Official proposal conversion: PASS'
 printf '%s\n' 'Message soft deletion: PASS'
 printf '%s\n' 'Proposal-to-PLAN-TREE workflow: PASS'
 printf '%s\n' 'Nginx, Stage tests and GitHub prompt policy: PASS'
+printf '%s\n' 'Detached Frame response recovery: PASS'
+printf '%s\n' 'Post-send duplicate prevention: PASS'
 printf '%s\n' 'Per-project GitHub credentials: PASS'
 printf '%s\n' 'STAGEPILOT_UNIFIED_PROJECT=PASS'
 printf 'Finished: %s\n' "$(date -u +%FT%TZ)"

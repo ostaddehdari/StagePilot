@@ -13,6 +13,7 @@
     "browser:validate-test": "node browser/validator-selftest.mjs",
     "browser:composer-test": "node browser/composer-insertion-selftest.mjs",
     "browser:runtime-guard-test": "node src/browser-runtime-guard-selftest.mjs",
+    "browser:frame-recovery-test": "node browser/response-frame-recovery-selftest.mjs",
     "browser:headless": "node browser/headless-session.mjs",
     "manager:plan-test": "node manager/project-plan-contract-selftest.mjs",
     "manager:proposal-test": "node manager/project-proposal-contract-selftest.mjs",

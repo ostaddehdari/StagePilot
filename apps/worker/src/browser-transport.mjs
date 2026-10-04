@@ -278,3 +278,79 @@ export async function sendPromptAndWait({
         responseStatePath
     };
 }
+
+
+export async function recoverPreviouslySentPrompt({
+    profileKey,
+    accountId,
+    conversationUrl,
+    operationId,
+    promptText,
+    provisionalConversationId = null,
+    timeoutMs = 180_000,
+    onProgress
+}) {
+    const progress = async (stage, details = {}) => {
+        if (typeof onProgress === 'function') {
+            await onProgress({ stage, at: new Date().toISOString(), ...details });
+        }
+    };
+
+    await progress('response_recovery', {
+        resendBlocked: true,
+        conversationUrl: conversationUrl ?? null
+    });
+    await progress('browser_starting', { recoveryOnly: true });
+    const runtime = await ensureBrowserRuntime({
+        profileKey,
+        accountId,
+        targetUrl: conversationUrl || 'https://chatgpt.com/'
+    });
+    await progress('browser_ready', {
+        mode: runtime?.mode ?? 'headless',
+        recoveryOnly: true
+    });
+
+    if (conversationUrl) {
+        await progress('target_opening', { targetType: 'conversation', recoveryOnly: true });
+        await adapterRequest(profileKey, {
+            action: 'open-conversation',
+            url: conversationUrl
+        });
+        await progress('target_opened', { targetType: 'conversation', recoveryOnly: true });
+    }
+
+    await mkdir(RESPONSE_ROOT, { recursive: true, mode: 0o700 });
+    const responseStatePath = join(RESPONSE_ROOT, `${operationId}.json`);
+    await progress('response_waiting', {
+        timeoutMs,
+        recoveryOnly: true,
+        resendBlocked: true
+    });
+    const waited = await adapterRequest(profileKey, {
+        action: 'wait-response',
+        operationId,
+        expectedPromptText: promptText,
+        provisionalConversationId,
+        responseStatePath,
+        timeoutMs
+    }, timeoutMs + 15_000);
+
+    if (waited?.response?.state !== 'RESPONSE_COMPLETED') {
+        throw new Error(`CHATGPT_RESPONSE_NOT_COMPLETE:${waited?.response?.state ?? 'unknown'}`);
+    }
+    await progress('response_received', {
+        responseSha256: waited.response.responseSha256 ?? null,
+        conversationUrl: waited.response.observedUrl ?? conversationUrl ?? null,
+        recoveryOnly: true,
+        resendBlocked: true
+    });
+    return {
+        text: waited.response.responseText,
+        sha256: waited.response.responseSha256,
+        conversationId: waited.response.observedConversationId ?? provisionalConversationId,
+        conversationUrl: waited.response.observedUrl ?? conversationUrl,
+        responseStatePath,
+        recoveredWithoutResend: true
+    };
+}

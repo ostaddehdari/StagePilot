@@ -57,6 +57,21 @@ function sha256(
 }
 
 
+export function isTransientFrameError(
+    error
+) {
+    const message = error instanceof Error
+        ? error.message
+        : String(error ?? '');
+    return [
+        /detached Frame/i,
+        /Execution context was destroyed/i,
+        /Cannot find context with specified id/i,
+        /Inspected target navigated or closed/i
+    ].some(pattern => pattern.test(message));
+}
+
+
 function conversationIdFromUrl(
     value
 ) {
@@ -957,24 +972,53 @@ export async function waitForCorrelatedResponse({
         null;
 
 
+    let frameRecoveryCount =
+        0;
+
+
     while (
         Date.now()
         <
         deadline
     ) {
 
-        last =
-            await inspectCorrelatedResponse({
+        try {
 
-                page,
+            last =
+                await inspectCorrelatedResponse({
 
+                    page,
+
+                    operationId,
+
+                    expectedPromptText,
+
+                    provisionalConversationId
+
+                });
+
+        } catch (error) {
+
+            if (!isTransientFrameError(error)) {
+                throw error;
+            }
+
+            frameRecoveryCount += 1;
+
+            last = {
                 operationId,
+                state: 'FRAME_REACQUIRING',
+                provisionalConversationId,
+                frameRecoveryCount,
+                error: error instanceof Error ? error.message : String(error),
+                checkedAt: new Date().toISOString()
+            };
 
-                expectedPromptText,
+            await atomicJson(responseStatePath, last);
+            await sleep(750);
+            continue;
 
-                provisionalConversationId
-
-            });
+        }
 
 
         if (

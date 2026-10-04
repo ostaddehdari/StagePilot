@@ -118,7 +118,6 @@ function errorLabel(error: string) {
         INVALID_CHAT_PROJECT_URL: 'نشانی ChatGPT معتبر نیست.',
         'CHATGPT_INTERVENTION_REQUIRED:challenge': 'Cloudflare مانع دسترسی شده است؛ در تنظیمات پروژه noVNC را باز کنید و بررسی انسانی را کامل کنید.',
         'CHATGPT_INTERVENTION_REQUIRED:needs_login': 'حساب ChatGPT نیاز به ورود دارد؛ در تنظیمات پروژه noVNC را باز کنید و وارد حساب شوید.',
-        'CHATGPT_INTERVENTION_REQUIRED:VISIBLE_BROWSER_ACTIVE': 'مرورگر noVNC برای مداخله دستی باز است؛ ابتدا ورود یا Cloudflare را تکمیل و سپس «پایان مشاهده و بازگشت خودکار» را بزنید.',
         DRAFT_TRIGGERED_UNEXPECTED_SEND: 'هنگام درج متن یک ارسال ناخواسته تشخیص داده شد؛ چرخه فوراً متوقف شد و تکرار خودکار انجام نمی‌شود.',
         INCOMPLETE_NODE_ORDER: 'فهرست جابه‌جایی کامل نیست؛ صفحه تازه‌سازی شد.'
     };

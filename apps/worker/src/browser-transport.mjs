@@ -47,7 +47,7 @@ async function readVisibleRuntime(profileKey) {
     }
 }
 
-export function visibleRuntimeIntervention(visible, controllerAlive) {
+export function visibleRuntimeActivity(visible, controllerAlive) {
     if (
         visible?.status !== 'ready'
         || visible?.mode !== 'visible-login'
@@ -56,7 +56,7 @@ export function visibleRuntimeIntervention(visible, controllerAlive) {
         return null;
     }
     return {
-        interventionRequired: true,
+        active: true,
         reason: 'visible_browser_active',
         profileKey: visible.profileKey ?? null,
         accountId: visible.accountId ?? null,
@@ -97,14 +97,20 @@ async function visibleManager(command, profileKey, accountId = '', targetUrl = '
 
 export async function ensureBrowserRuntime({ profileKey, accountId, targetUrl }) {
     const visible = await readVisibleRuntime(profileKey);
-    const intervention = visibleRuntimeIntervention(
+    const visibleActivity = visibleRuntimeActivity(
         visible,
         pidAlive(visible?.controllerPid)
     );
-    if (intervention) {
-        const error = new Error('CHATGPT_INTERVENTION_REQUIRED:VISIBLE_BROWSER_ACTIVE');
-        error.diagnostic = intervention;
-        throw error;
+    if (visibleActivity) {
+        /*
+         * A manually opened noVNC window is not proof of a login or
+         * Cloudflare challenge. The visible browser intentionally has no CDP
+         * endpoint, so automation cannot reuse it directly. Close it first,
+         * preserve its profile, and validate that same profile through the
+         * managed headless runtime. If validation really finds a challenge,
+         * the existing branch below reopens noVNC for human intervention.
+         */
+        await visibleManager('stop', profileKey);
     }
 
     let state = await manager('status', profileKey).catch(() => null);
@@ -131,7 +137,17 @@ export async function ensureBrowserRuntime({ profileKey, accountId, targetUrl })
         };
         throw error;
     }
-    return state;
+    return visibleActivity
+        ? {
+            ...state,
+            visibleHandoff: {
+                completed: true,
+                previousMode: visibleActivity.mode,
+                previousNoVncPort: visibleActivity.noVncPort,
+                previousStartedAt: visibleActivity.startedAt
+            }
+        }
+        : state;
 }
 
 async function adapterRequestOnce(profileKey, request, timeoutMs) {
@@ -207,6 +223,9 @@ export async function sendPromptAndWait({
         accountId,
         targetUrl: conversationUrl || 'https://chatgpt.com/'
     });
+    if (runtime?.visibleHandoff?.completed === true) {
+        await progress('visible_handoff_completed', runtime.visibleHandoff);
+    }
     await progress('browser_ready', { mode: runtime?.mode ?? 'headless' });
 
     if (conversationUrl) {
@@ -336,6 +355,12 @@ export async function recoverPreviouslySentPrompt({
         accountId,
         targetUrl: conversationUrl || 'https://chatgpt.com/'
     });
+    if (runtime?.visibleHandoff?.completed === true) {
+        await progress('visible_handoff_completed', {
+            ...runtime.visibleHandoff,
+            recoveryOnly: true
+        });
+    }
     await progress('browser_ready', {
         mode: runtime?.mode ?? 'headless',
         recoveryOnly: true

@@ -121,8 +121,13 @@ rg -q 'canonicalizeComposerText' apps/worker/browser/chatgpt-adapter.mjs \
 if rg -U 'keyboard\s*\.\s*insertText\s*\(' apps/worker/browser/chatgpt-adapter.mjs; then
     fail 'unsupported Puppeteer keyboard.insertText is present'
 fi
-rg -q 'visibleRuntimeIntervention' apps/worker/src/browser-transport.mjs \
-    || fail 'visible browser runtime guard missing'
+rg -q 'visibleRuntimeActivity' apps/worker/src/browser-transport.mjs \
+    || fail 'visible browser runtime activity detection missing'
+rg -q "await visibleManager('stop', profileKey)" apps/worker/src/browser-transport.mjs \
+    || fail 'automatic visible browser handoff missing'
+if rg -q "new Error\\('CHATGPT_INTERVENTION_REQUIRED:VISIBLE_BROWSER_ACTIVE'\\)" apps/worker/src/browser-transport.mjs; then
+    fail 'false visible-browser intervention guard is still present'
+fi
 rg -q 'STAGEPILOT_PROFESSIONAL_PROPOSAL_V1' apps/api/src/planning.ts \
     || fail 'professional proposal prompt missing'
 rg -q 'STAGEPILOT_PROPOSAL_TO_PLAN_TREE_V1' apps/api/src/planning.ts \
@@ -281,7 +286,7 @@ printf '%s\n' 'Atomic multiline prompt insertion: PASS'
 printf '%s\n' 'Composer DOM text verification: PASS'
 printf '%s\n' 'Single active planning request guard: PASS'
 printf '%s\n' 'Post-send automatic retry blocked: PASS'
-printf '%s\n' 'Visible noVNC runtime guard: PASS'
+printf '%s\n' 'Visible noVNC automatic handoff: PASS'
 printf '%s\n' 'Professional proposal workflow: PASS'
 printf '%s\n' 'Official proposal conversion: PASS'
 printf '%s\n' 'Message soft deletion: PASS'

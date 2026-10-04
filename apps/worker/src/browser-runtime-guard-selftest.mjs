@@ -9,7 +9,7 @@ import {
 } from 'node:url';
 
 import {
-    visibleRuntimeIntervention
+    visibleRuntimeActivity
 } from './browser-transport.mjs';
 
 
@@ -25,7 +25,7 @@ const readyVisible = {
 };
 
 
-const active = visibleRuntimeIntervention(
+const active = visibleRuntimeActivity(
     readyVisible,
     true
 );
@@ -34,7 +34,7 @@ const active = visibleRuntimeIntervention(
 assert.deepEqual(
     active,
     {
-        interventionRequired: true,
+        active: true,
         reason: 'visible_browser_active',
         profileKey: 'chat-account-test',
         accountId: 'account-test',
@@ -47,7 +47,7 @@ assert.deepEqual(
 
 
 assert.equal(
-    visibleRuntimeIntervention(
+    visibleRuntimeActivity(
         readyVisible,
         false
     ),
@@ -56,7 +56,7 @@ assert.equal(
 
 
 assert.equal(
-    visibleRuntimeIntervention(
+    visibleRuntimeActivity(
         {
             ...readyVisible,
             status: 'stopped'
@@ -68,7 +68,7 @@ assert.equal(
 
 
 assert.equal(
-    visibleRuntimeIntervention(
+    visibleRuntimeActivity(
         {
             ...readyVisible,
             mode: 'background-headful'
@@ -95,7 +95,19 @@ assert.match(
 
 assert.match(
     source,
-    /throw error;\s*}\s*\n\s*let state = await manager/
+    /await visibleManager\('stop', profileKey\)/
+);
+
+
+assert.doesNotMatch(
+    source,
+    /new Error\('CHATGPT_INTERVENTION_REQUIRED:VISIBLE_BROWSER_ACTIVE'\)/
+);
+
+
+assert.match(
+    source,
+    /visibleHandoff:\s*\{\s*completed: true/
 );
 
 
@@ -103,8 +115,9 @@ process.stdout.write(
     `${JSON.stringify({
         ok: true,
         suite: 'browser-runtime-guard',
-        visibleRuntimeBlocked: true,
-        headlessStartAttempted: false,
+        visibleRuntimeDetected: true,
+        automaticHandoffEnabled: true,
+        falseInterventionRemoved: true,
         noVncPortPreserved: active.noVncPort
     })}\n`
 );

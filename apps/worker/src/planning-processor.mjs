@@ -11,6 +11,7 @@ const TRANSPORT_MESSAGES = {
     context_loading: 'اطلاعات پروژه، حساب ChatGPT و لینک مقصد در حال بررسی است.',
     context_ready: 'حساب ChatGPT و مقصد گفت‌وگو آماده شد.',
     browser_starting: 'مرورگر ChatGPT در حال راه‌اندازی است.',
+    visible_handoff_completed: 'مرورگر noVNC به‌صورت ایمن به حالت اجرای خودکار تحویل داده شد.',
     browser_ready: 'مرورگر آماده شد.',
     target_opening: 'لینک چت یا پروژه ChatGPT در حال بازشدن است.',
     target_opened: 'لینک ChatGPT باز شد.',

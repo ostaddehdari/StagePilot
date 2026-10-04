@@ -1,7 +1,9 @@
 BEGIN;
 
 WITH recoverable AS (
-    SELECT failed.id
+    SELECT DISTINCT ON (failed.project_id)
+           failed.id,
+           failed.project_id
     FROM prompt_requests failed
     WHERE failed.request_type IN (
         'project_plan', 'project_proposal', 'project_plan_tree'
@@ -20,6 +22,7 @@ WITH recoverable AS (
                 'created', 'retry', 'processing', 'sent', 'waiting_response'
             )
       )
+    ORDER BY failed.project_id, failed.created_at DESC, failed.id DESC
 ), recovered AS (
     UPDATE prompt_requests request
     SET status = 'retry',

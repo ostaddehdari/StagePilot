@@ -139,6 +139,8 @@ rg -q 'FRAME_REACQUIRING' apps/worker/browser/chatgpt-response-monitor.mjs \
     || fail 'detached Frame recovery missing'
 rg -q 'send_uncertain_recovery' apps/worker/src/browser-transport.mjs \
     || fail 'uncertain send response-only recovery missing'
+rg -q 'DISTINCT ON \(failed.project_id\)' database/migrations/019_send_uncertain_recovery.sql \
+    || fail 'single recovery request per project guard missing'
 rg -q "import\('quill'\)" apps/web/components/project-control-center.tsx \
     || fail 'Quill visual proposal editor missing'
 if rg -U 'keyboard\s*\.\s*type\s*\(\s*text\b' apps/worker/browser/chatgpt-adapter.mjs; then
